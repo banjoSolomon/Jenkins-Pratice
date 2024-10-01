@@ -1,54 +1,38 @@
 pipeline {
     agent any
 
+    tools {
+        // Use the configured Maven version in Jenkins (Make sure Maven 3.6.3 is installed in Jenkins under Global Tool Configuration)
+        maven 'Maven 3.6.3'
+    }
+
     environment {
-        // Store Docker Hub credentials securely
+        // Replace with your Docker Hub username and image name
+        DOCKER_IMAGE = "solomon11/jenk"
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
     }
 
     stages {
-        stage('Checkout code') {
+        stage('Checkout') {
             steps {
-                // Checkout the source code from the SCM
-                checkout scm
+                // Checkout the source code from the Git repository
+                git 'https://github.com/banjoSolomon/Jenkins-Pratice'
             }
         }
 
-        stage('Set up JDK 17') {
+        stage('Build with Maven') {
             steps {
-                // Wrap steps in a node block
-                script {
-                    node {
-                        // Install OpenJDK 17
-                        sh 'sudo apt-get update'
-                        sh 'sudo apt-get install openjdk-17-jdk -y'
-                        sh 'java -version' // Verify the installation
-                    }
-                }
-            }
-        }
-
-        stage('Restore Maven Package') {
-            steps {
-                // Wrap steps in a node block
-                script {
-                    node {
-                        // Restore Maven dependencies
-                        sh 'mvn dependency:go-offline'
-                    }
-                }
+                // Use Maven to clean and install the project dependencies and build the project
+                sh 'mvn clean install'
             }
         }
 
         stage('Login to Docker Hub') {
             steps {
                 script {
-                    // Wrap steps in a node block
-                    node {
-                        // Login to Docker Hub
-                        docker.withRegistry('https://index.docker.io/v1/', DOCKERHUB_CREDENTIALS) {
-                            echo 'Logged into Docker Hub'
-                        }
+                    // Log in to Docker Hub with stored credentials
+                    docker.withRegistry('https://index.docker.io/v1/', DOCKERHUB_CREDENTIALS) {
+                        echo 'Logged into Docker Hub'
                     }
                 }
             }
@@ -57,11 +41,8 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Wrap steps in a node block
-                    node {
-                        // Build the Docker image with the specified name
-                        docker.build("solomon11/jenk:latest")
-                    }
+                    // Build the Docker image and tag it as 'latest'
+                    def image = docker.build("${DOCKER_IMAGE}:latest")
                 }
             }
         }
@@ -69,13 +50,10 @@ pipeline {
         stage('Push Docker Image') {
             steps {
                 script {
-                    // Wrap steps in a node block
-                    node {
-                        // Push the built Docker image to Docker Hub
-                        docker.withRegistry('https://index.docker.io/v1/', DOCKERHUB_CREDENTIALS) {
-                            def image = docker.image("solomon11/jenk:latest")
-                            image.push() // Push the image with the latest tag
-                        }
+                    // Push the Docker image to Docker Hub
+                    docker.withRegistry('https://index.docker.io/v1/', DOCKERHUB_CREDENTIALS) {
+                        def image = docker.image("${DOCKER_IMAGE}:latest")
+                        image.push('latest')  // Push the image with the 'latest' tag
                     }
                 }
             }
