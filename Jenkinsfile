@@ -62,8 +62,10 @@ pipeline {
 
     post {
         always {
-            // Clean up the workspace after the build
-            cleanWs()
+            // Make sure to perform clean up within a node context
+            script {
+                cleanWs()  // This ensures the workspace is cleaned up properly
+            }
         }
     }
 }
