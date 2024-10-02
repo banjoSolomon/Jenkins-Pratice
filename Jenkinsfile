@@ -3,7 +3,7 @@ pipeline {
 
     tools {
         // Use the configured Maven version in Jenkins
-        maven 'Maven 3.6.3'
+        maven 'Maven11'  // Update to match the Maven name you configured in Jenkins
     }
 
     environment {
@@ -23,7 +23,6 @@ pipeline {
         stage('Build with Maven') {
             steps {
                 // Use Maven to clean and install the project dependencies and build the project
-                // Use 'bat' if on Windows
                 sh 'mvn clean install'
             }
         }
@@ -63,13 +62,11 @@ pipeline {
 
     post {
         always {
-            // Clean up the workspace
-            script {
-                cleanWs()
-            }
+            // Clean up the workspace after each run
+            cleanWs()
         }
         failure {
-            // Optional: Notify on failure
+            // Notify on failure
             echo 'Build failed!'
         }
     }
