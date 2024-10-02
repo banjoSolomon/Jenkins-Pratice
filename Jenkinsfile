@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     tools {
-        // Use the configured Maven version in Jenkins (Make sure Maven 3.6.3 is installed in Jenkins under Global Tool Configuration)
+        // Use the configured Maven version in Jenkins
         maven 'Maven 3.6.3'
     }
 
@@ -23,6 +23,7 @@ pipeline {
         stage('Build with Maven') {
             steps {
                 // Use Maven to clean and install the project dependencies and build the project
+                // Use 'bat' if on Windows
                 sh 'mvn clean install'
             }
         }
@@ -62,10 +63,14 @@ pipeline {
 
     post {
         always {
-            // Make sure to perform clean up within a node context
+            // Clean up the workspace
             script {
-                cleanWs()  // This ensures the workspace is cleaned up properly
+                cleanWs()
             }
+        }
+        failure {
+            // Optional: Notify on failure
+            echo 'Build failed!'
         }
     }
 }
