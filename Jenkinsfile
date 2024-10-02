@@ -2,31 +2,44 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE_NAME = 'jenks' // Replace with your Docker image name
-        DOCKER_HUB_REPO = 'solomon11/${DOCKER_IMAGE_NAME}' // Replace with your Docker Hub username
+        DOCKER_CREDENTIALS_ID = 'dockerhub-credentials' // Jenkins credentials ID for Docker Hub
+        DOCKER_IMAGE_NAME = 'solomon11/jenks' // Name of your Docker image
+        DOCKER_IMAGE_TAG = '2' // Tag for your Docker image
     }
 
     stages {
-        stage('Checkout') {
+        stage('Clone Repository') {
             steps {
-                // Checkout the source code from the repository
-                checkout scm
+                git 'https://github.com/banjoSolomon/Jenkins-Pratice.git'
+            }
+        }
+
+        stage('Set Up Docker Buildx') {
+            steps {
+                script {
+                    // Create and set up Docker Buildx builder
+                    sh 'docker buildx create --use'
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Use credentials for Docker Hub
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                        // Build the Docker image
-                        sh "docker build -t ${DOCKER_HUB_REPO}:${env.BUILD_ID} ."
+                    // Build the Docker image using Buildx
+                    sh "docker buildx build --platform linux/amd64,linux/arm64 -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} . --push"
+                }
+            }
+        }
 
-                        // Login to Docker Hub
-                        sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
+        stage('Push Docker Image') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                    script {
+                        // Log in to Docker Hub
+                        sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin"
 
-                        // Push the Docker image to Docker Hub
-                        sh "docker push ${DOCKER_HUB_REPO}:${env.BUILD_ID}"
+                        // Push the Docker image to Docker Hub (this is now handled in the build stage with --push)
                     }
                 }
             }
@@ -35,8 +48,7 @@ pipeline {
 
     post {
         always {
-            // Clean up the workspace after the build
-            cleanWs()
+            cleanWs() // Clean workspace after the build
         }
     }
 }
