@@ -1,24 +1,18 @@
 # Use the official Debian base image
 FROM debian:bookworm
 
-# Set environment variables
+# Set environment variables to suppress prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install prerequisites
+# Install curl and any other necessary dependencies
 RUN apt-get update && \
-    apt-get install -y apt-transport-https ca-certificates curl gnupg2 && \
-    rm -rf /var/lib/apt/lists/* && \
-    # Add Docker's official GPG key
-    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker.gpg && \
-    # Set up the Docker repository
-    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list && \
-    apt-get update && \
-    # Install Docker CLI
-    apt-get install -y docker-ce-cli && \
+    apt-get install -y curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Set up your application
-# (Add your application setup here)
+# Install Docker using the convenience script
+RUN curl -fsSL https://get.docker.com -o get-docker.sh && \
+    sh get-docker.sh && \
+    rm get-docker.sh
 
-# Set the entrypoint or command for your container
-# CMD ["your-command"]
+# Optional: Set Docker to run as a service
+RUN systemctl enable docker
