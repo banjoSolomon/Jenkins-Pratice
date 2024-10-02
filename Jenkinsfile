@@ -1,59 +1,32 @@
 pipeline {
     agent any
 
-    tools {
-        // Use the configured Maven version in Jenkins
-        maven 'Maven11'  // Update to match the Maven name you configured in Jenkins
-    }
-
     environment {
-        // Replace with your Docker Hub username and image name
-        DOCKER_IMAGE = "solomon11/jenk"
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
+        DOCKER_IMAGE_NAME = 'jenks' // Replace with your Docker image name
+        DOCKER_HUB_REPO = 'solomon11/${DOCKER_IMAGE_NAME}' // Replace with your Docker Hub username
     }
 
     stages {
         stage('Checkout') {
             steps {
-                // Checkout the source code from the Git repository
-                git 'https://github.com/banjoSolomon/Jenkins-Pratice'
-            }
-        }
-
-        stage('Build with Maven') {
-            steps {
-                // Use Maven to clean and install the project dependencies and build the project
-                sh 'mvn clean install'
-            }
-        }
-
-        stage('Login to Docker Hub') {
-            steps {
-                script {
-                    // Log in to Docker Hub with stored credentials
-                    docker.withRegistry('https://index.docker.io/v1/', DOCKERHUB_CREDENTIALS) {
-                        echo 'Logged into Docker Hub'
-                    }
-                }
+                // Checkout the source code from the repository
+                checkout scm
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Build the Docker image and tag it as 'latest'
-                    def image = docker.build("${DOCKER_IMAGE}:latest")
-                }
-            }
-        }
+                    // Use credentials for Docker Hub
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                        // Build the Docker image
+                        sh "docker build -t ${DOCKER_HUB_REPO}:${env.BUILD_ID} ."
 
-        stage('Push Docker Image') {
-            steps {
-                script {
-                    // Push the Docker image to Docker Hub
-                    docker.withRegistry('https://index.docker.io/v1/', DOCKERHUB_CREDENTIALS) {
-                        def image = docker.image("${DOCKER_IMAGE}:latest")
-                        image.push('latest')  // Push the image with the 'latest' tag
+                        // Login to Docker Hub
+                        sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
+
+                        // Push the Docker image to Docker Hub
+                        sh "docker push ${DOCKER_HUB_REPO}:${env.BUILD_ID}"
                     }
                 }
             }
@@ -62,12 +35,8 @@ pipeline {
 
     post {
         always {
-            // Clean up the workspace after each run
+            // Clean up the workspace after the build
             cleanWs()
-        }
-        failure {
-            // Notify on failure
-            echo 'Build failed!'
         }
     }
 }
