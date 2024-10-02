@@ -10,7 +10,7 @@ pipeline {
     stages {
         stage('Clone Repository') {
             steps {
-                git 'https://github.com/banjoSolomon/Jenkins-Pratice.git'
+                git branch: 'in-dev', url: 'https://github.com/banjoSolomon/Jenkins-Pratice.git'
             }
         }
 
@@ -18,7 +18,7 @@ pipeline {
             steps {
                 script {
                     // Create and set up Docker Buildx builder
-                    sh 'docker buildx create --use'
+                    sh 'docker buildx create --use || true'
                 }
             }
         }
@@ -38,8 +38,6 @@ pipeline {
                     script {
                         // Log in to Docker Hub
                         sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin"
-
-                        // Push the Docker image to Docker Hub (this is now handled in the build stage with --push)
                     }
                 }
             }
