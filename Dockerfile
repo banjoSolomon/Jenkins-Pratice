@@ -1,5 +1,5 @@
 # Use a slimmer base image for Java
-FROM openjdk:17-jre-slim
+FROM openjdk:17-jdk-slim
 
 # Set environment variables (optional)
 ENV DEBIAN_FRONTEND=noninteractive
