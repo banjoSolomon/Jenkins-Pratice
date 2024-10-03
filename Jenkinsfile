@@ -3,13 +3,12 @@ pipeline {
 
     environment {
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials' // Jenkins credentials ID for Docker Hub
-        DOCKER_IMAGE_NAME = 'solomon11/jenks' // Name of your Docker image
-        DOCKER_IMAGE_TAG = '2' // Tag for your Docker image
+        DOCKER_IMAGE_NAME = 'solomon11/jenkins' // Docker image name
+        DOCKER_IMAGE_TAG = 'latest' // Docker image tag
     }
 
     stages {
         stage('Clone Repository') {
-
             steps {
                 git branch: 'in-dev', url: 'https://github.com/banjoSolomon/Jenkins-Pratice.git'
             }
@@ -18,7 +17,7 @@ pipeline {
         stage('Set Up Docker Buildx') {
             steps {
                 script {
-                    // Create and set up Docker Buildx builder
+                    // Create and use Docker Buildx builder if it doesn't exist
                     sh 'docker buildx create --use || true'
                 }
             }
@@ -27,7 +26,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Build the Docker image using Buildx
+                    // Build the Docker image for multiple platforms
                     sh "docker buildx build --platform linux/amd64,linux/arm64 -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} . --push"
                 }
             }
@@ -47,7 +46,7 @@ pipeline {
 
     post {
         always {
-            cleanWs() // Clean workspace after the build
+            cleanWs() // Clean up the workspace after the build
         }
     }
 }
