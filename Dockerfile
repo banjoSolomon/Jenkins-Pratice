@@ -1,18 +1,24 @@
-# Use a base image, e.g., Debian or any other relevant base for your app
-FROM debian:bookworm
+# Use a specific version of a base image to ensure consistency
+FROM debian:bookworm-slim
 
 # Set environment variables (optional)
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install required packages for your app
-RUN apt-get update && apt-get install -y curl git build-essential && rm -rf /var/lib/apt/lists/*
+# Install required packages and clean up in a single RUN command
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl git openjdk-17-jdk && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user and switch to that user (optional but recommended for security)
+RUN useradd -m appuser
+USER appuser
 
 # Copy your application files
-COPY . /app
+COPY --chown=appuser:appuser . /app
 WORKDIR /app
 
-# Install additional dependencies or build the application (if needed)
-# RUN [commands to install/build]
+# Set the entry point to start Jenkins automatically
+ENTRYPOINT ["java", "-jar", "-Djenkins.install.runSetupWizard=false", "jenkins.war"]
 
-# Set the default command to run your application
-CMD ["./Jenkins-Pratice.sh"]
+# Expose Jenkins default port (optional)
+EXPOSE 8080
