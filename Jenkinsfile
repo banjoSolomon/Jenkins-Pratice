@@ -51,25 +51,30 @@ pipeline {
                         """, returnStdout: true).trim()
                         echo "Instance ID: ${instanceId}"
 
-                        // Poll for instance state with an extended wait time
-                        def maxAttempts = 20 // Increased attempts
-                        def attempt = 0
-                        def instanceState = ""
+                        // Function to get instance state
+                        def getInstanceState(String instanceId) {
+                            def maxRetries = 3
+                            def attempt = 0
+                            def instanceState = ""
 
-                        while (attempt < maxAttempts) {
-                            sleep(30) // Wait for 30 seconds before checking the state
-                            instanceState = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].State.Name' --output text", returnStdout: true).trim()
-                            echo "Current state: ${instanceState}"
-
-                            if (instanceState == "running") {
-                                echo "Instance is running!"
-                                break
+                            while (attempt < maxRetries) {
+                                try {
+                                    instanceState = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].State.Name' --output text", returnStdout: true).trim()
+                                    return instanceState
+                                } catch (Exception e) {
+                                    echo "Attempt ${attempt + 1} failed: ${e.message}"
+                                    sleep(10) // Wait before retrying
+                                    attempt++
+                                }
                             }
-                            attempt++
+                            error "Failed to get instance state after ${maxRetries} attempts."
                         }
 
+                        // Poll for instance state
+                        def instanceState = getInstanceState(instanceId)
+
                         if (instanceState != "running") {
-                            error "Instance did not enter the running state after ${maxAttempts * 30} seconds."
+                            error "Instance did not enter the running state."
                         }
 
                         // Retrieve Public IP of the instance
