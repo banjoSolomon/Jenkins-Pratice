@@ -7,6 +7,7 @@ RUN apt-get update && \
 
 RUN useradd -m appuser
 USER appuser
+
 COPY --chown=appuser:appuser . /app
 WORKDIR /app
 ENTRYPOINT ["java", "-jar", "-Djenkins.install.runSetupWizard=false", "jenkins.war"]

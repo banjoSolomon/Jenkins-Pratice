@@ -1,6 +1,7 @@
 pipeline {
     agent any
 
+
     environment {
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
         DOCKER_IMAGE_NAME = 'solomon11/jenkins'
