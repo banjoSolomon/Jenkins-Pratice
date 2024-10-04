@@ -8,11 +8,12 @@ pipeline {
         AWS_CREDENTIALS_ID = 'aws-credentials'
         AWS_REGION = 'us-east-1'
         INSTANCE_TYPE = 't2.micro'
-        AMI_ID = 'ami-0866a3c8686eaeeba' // Change this to your required AMI
-        KEY_NAME = 'terraform' // Ensure this key is available in your local SSH
+        AMI_ID = 'ami-0866a3c8686eaeeba'
+        KEY_NAME = 'terraform'
         POSTGRES_USER = 'postgres'
         POSTGRES_PASSWORD = 'password'
         POSTGRES_DB = 'Jenkins_db'
+        INSTANCE_NAME = 'Jenkins'
     }
 
     stages {
@@ -37,43 +38,24 @@ pipeline {
         stage('Create EC2 Instance with Default Security Group') {
             steps {
                 script {
-                    // Define the method to get the instance state
-                    def getInstanceState(String instanceId) {
-                        def maxRetries = 3
-                        def attempt = 0
-                        def instanceState = ""
-
-                        while (attempt < maxRetries) {
-                            try {
-                                instanceState = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].State.Name' --output text", returnStdout: true).trim()
-                                return instanceState
-                            } catch (Exception e) {
-                                echo "Attempt ${attempt + 1} failed: ${e.message}"
-                                sleep(10) // Wait before retrying
-                                attempt++
-                            }
-                        }
-                        error "Failed to get instance state after ${maxRetries} attempts."
-                    }
-
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
-                        // Create EC2 instance and get its ID
+                        // Run the EC2 instance
                         def instanceId = sh(script: """
                             aws ec2 run-instances \
                                 --image-id ${AMI_ID} \
                                 --instance-type ${INSTANCE_TYPE} \
                                 --key-name ${KEY_NAME} \
                                 --region ${AWS_REGION} \
-                                --tag-specifications ResourceType=instance,Tags=[{Key=Name,Value=Jenkins}] \
+                                --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}}]' \
                                 --query 'Instances[0].InstanceId' \
                                 --output text
                         """, returnStdout: true).trim()
                         echo "Instance ID: ${instanceId}"
 
-                        // Poll for instance state using the method
-                        def instanceState = getInstanceState(instanceId)
+                        // Wait for the instance to be in a running state
+                        sh "aws ec2 wait instance-running --instance-ids ${instanceId}"
 
-                        // Retrieve Public IP of the instance
+                        // Fetch the public IP address of the instance
                         def ec2PublicIp = sh(script: """
                             aws ec2 describe-instances \
                                 --instance-id ${instanceId} \
@@ -82,7 +64,7 @@ pipeline {
                         """, returnStdout: true).trim()
                         echo "Public IP: ${ec2PublicIp}"
 
-                        // Store values for later use
+                        // Update files to use later
                         writeFile file: 'instance_id.txt', text: instanceId
                         writeFile file: 'ec2_public_ip.txt', text: ec2PublicIp
                     }
@@ -93,7 +75,7 @@ pipeline {
         stage('Install Docker and PostgreSQL on EC2') {
             steps {
                 script {
-                    sshagent(credentials: ['ec2-ssh-credentials']) {
+                    sshagent (credentials: ['ec2-ssh-credentials']) {
                         def ec2PublicIp = readFile('ec2_public_ip.txt').trim()
                         sh """
                         ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
@@ -103,12 +85,28 @@ pipeline {
                         sudo systemctl start docker
                         sudo usermod -aG docker ec2-user
 
+                        # Wait for Docker to be ready
+                        for i in {1..10}; do
+                            if [[ \$(systemctl is-active docker) == "active" ]]; then
+                                break
+                            fi
+                            sleep 5
+                        done
+
                         # Install PostgreSQL
                         sudo amazon-linux-extras install postgresql13 -y
                         sudo yum install -y postgresql-server
                         sudo postgresql-setup --initdb
                         sudo systemctl enable postgresql
                         sudo systemctl start postgresql
+
+                        # Wait for PostgreSQL to be ready
+                        for i in {1..10}; do
+                            if [[ \$(systemctl is-active postgresql) == "active" ]]; then
+                                break
+                            fi
+                            sleep 5
+                        done
 
                         # Configure PostgreSQL
                         sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}';"
@@ -129,7 +127,7 @@ pipeline {
         stage('Run Docker Container') {
             steps {
                 script {
-                    sshagent(credentials: ['ec2-ssh-credentials']) {
+                    sshagent (credentials: ['ec2-ssh-credentials']) {
                         def ec2PublicIp = readFile('ec2_public_ip.txt').trim()
                         sh """
                         ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
