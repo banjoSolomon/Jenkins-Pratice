@@ -18,7 +18,6 @@ pipeline {
         POSTGRES_DB = 'Jenkins_db'
     }
 
-
     stages {
         stage('Clone Repository') {
             steps {
