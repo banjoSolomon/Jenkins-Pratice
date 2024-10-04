@@ -8,14 +8,13 @@ pipeline {
         AWS_CREDENTIALS_ID = 'aws-credentials'
         AWS_REGION = 'us-east-1'
         INSTANCE_TYPE = 't2.micro'
-        AMI_ID = 'ami-0866a3c8686eaeeba'
-        KEY_NAME = 'terraform.pem'
-        INSTANCE_ID = ''
-        EC2_PUBLIC_IP = ''
+        AMI_ID = 'ami-0866a3c8686eaeeba' // Change this to your required AMI
+        KEY_NAME = 'terraform.pem' // Ensure this key is available in your local SSH
         POSTGRES_USER = 'postgres'
         POSTGRES_PASSWORD = 'password'
         POSTGRES_DB = 'Jenkins_db'
     }
+
     stages {
         stage('Clone Repository') {
             steps {
@@ -28,9 +27,9 @@ pipeline {
                 script {
                     withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
                         sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin"
+                        sh "docker build -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
+                        sh "docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
                     }
-                    sh "docker build -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
-                    sh "docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
                 }
             }
         }
@@ -39,29 +38,30 @@ pipeline {
             steps {
                 script {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
-                        // Create EC2 instance using the default security group
-                        sh '''
-                        INSTANCE_ID=$(aws ec2 run-instances \
-                            --image-id ${AMI_ID} \
-                            --instance-type ${INSTANCE_TYPE} \
-                            --key-name ${KEY_NAME} \
-                            --region ${AWS_REGION} \
-                            --query 'Instances[0].InstanceId' \
-                            --output text)
+                        // Create EC2 instance
+                        def instanceId = sh(script: """
+                            aws ec2 run-instances \
+                                --image-id ${AMI_ID} \
+                                --instance-type ${INSTANCE_TYPE} \
+                                --key-name ${KEY_NAME} \
+                                --region ${AWS_REGION} \
+                                --query 'Instances[0].InstanceId' \
+                                --output text
+                        """, returnStdout: true).trim()
+                        echo "Instance ID: ${instanceId}"
 
-                        echo "Instance ID: $INSTANCE_ID"
+                        // Retrieve Public IP of the instance
+                        def ec2PublicIp = sh(script: """
+                            aws ec2 describe-instances \
+                                --instance-id ${instanceId} \
+                                --query 'Reservations[0].Instances[0].PublicIpAddress' \
+                                --output text
+                        """, returnStdout: true).trim()
+                        echo "Public IP: ${ec2PublicIp}"
 
-                        # Retrieve Public IP of the instance
-                        EC2_PUBLIC_IP=$(aws ec2 describe-instances \
-                            --instance-id $INSTANCE_ID \
-                            --query 'Reservations[0].Instances[0].PublicIpAddress' \
-                            --output text)
-
-                        echo "Public IP: $EC2_PUBLIC_IP"
-
-                        echo "$INSTANCE_ID" > instance_id.txt
-                        echo "$EC2_PUBLIC_IP" > ec2_public_ip.txt
-                        '''
+                        // Store values for later use
+                        writeFile file: 'instance_id.txt', text: instanceId
+                        writeFile file: 'ec2_public_ip.txt', text: ec2PublicIp
                     }
                 }
             }
@@ -71,10 +71,9 @@ pipeline {
             steps {
                 script {
                     sshagent (credentials: ['ec2-ssh-credentials']) {
-                        sh '''
-                        EC2_PUBLIC_IP=$(cat ec2_public_ip.txt)
-
-                        ssh -o StrictHostKeyChecking=no ec2-user@$EC2_PUBLIC_IP <<EOF
+                        def ec2PublicIp = readFile('ec2_public_ip.txt').trim()
+                        sh """
+                        ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
                         # Install Docker
                         sudo yum update -y
                         sudo amazon-linux-extras install docker -y
@@ -98,21 +97,19 @@ pipeline {
                         echo "host    all             all             0.0.0.0/0               md5" | sudo tee -a /var/lib/pgsql/data/pg_hba.conf
                         sudo systemctl restart postgresql
                         EOF
-                        '''
+                        """
                     }
                 }
             }
         }
 
-
         stage('Run Docker Container') {
             steps {
                 script {
                     sshagent (credentials: ['ec2-ssh-credentials']) {
-                        sh '''
-                        EC2_PUBLIC_IP=$(cat ec2_public_ip.txt)
-
-                        ssh -o StrictHostKeyChecking=no ec2-user@$EC2_PUBLIC_IP <<EOF
+                        def ec2PublicIp = readFile('ec2_public_ip.txt').trim()
+                        sh """
+                        ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
                         # Run the Docker container
                         docker run -d --name my-app-container \
                             -e POSTGRES_USER=${POSTGRES_USER} \
@@ -121,7 +118,7 @@ pipeline {
                             -p 80:80 \
                             ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
                         EOF
-                        '''
+                        """
                     }
                 }
             }
