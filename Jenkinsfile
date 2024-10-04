@@ -19,6 +19,7 @@ pipeline {
     }
 
     stages {
+
         stage('Clone Repository') {
             steps {
                 git branch: 'in-dev', url: 'https://github.com/banjoSolomon/Jenkins-Pratice.git'
