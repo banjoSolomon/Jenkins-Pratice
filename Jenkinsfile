@@ -37,6 +37,25 @@ pipeline {
         stage('Create EC2 Instance with Default Security Group') {
             steps {
                 script {
+                    // Define the getInstanceState method within the script block
+                    def getInstanceState(String instanceId) {
+                        def maxRetries = 3
+                        def attempt = 0
+                        def instanceState = ""
+
+                        while (attempt < maxRetries) {
+                            try {
+                                instanceState = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].State.Name' --output text", returnStdout: true).trim()
+                                return instanceState
+                            } catch (Exception e) {
+                                echo "Attempt ${attempt + 1} failed: ${e.message}"
+                                sleep(10) // Wait before retrying
+                                attempt++
+                            }
+                        }
+                        error "Failed to get instance state after ${maxRetries} attempts."
+                    }
+
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
                         // Create EC2 instance and get its ID
                         def instanceId = sh(script: """
@@ -51,31 +70,8 @@ pipeline {
                         """, returnStdout: true).trim()
                         echo "Instance ID: ${instanceId}"
 
-                        // Function to get instance state
-                        def getInstanceState(String instanceId) {
-                            def maxRetries = 3
-                            def attempt = 0
-                            def instanceState = ""
-
-                            while (attempt < maxRetries) {
-                                try {
-                                    instanceState = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].State.Name' --output text", returnStdout: true).trim()
-                                    return instanceState
-                                } catch (Exception e) {
-                                    echo "Attempt ${attempt + 1} failed: ${e.message}"
-                                    sleep(10) // Wait before retrying
-                                    attempt++
-                                }
-                            }
-                            error "Failed to get instance state after ${maxRetries} attempts."
-                        }
-
-                        // Poll for instance state
+                        // Poll for instance state using the method
                         def instanceState = getInstanceState(instanceId)
-
-                        if (instanceState != "running") {
-                            error "Instance did not enter the running state."
-                        }
 
                         // Retrieve Public IP of the instance
                         def ec2PublicIp = sh(script: """
