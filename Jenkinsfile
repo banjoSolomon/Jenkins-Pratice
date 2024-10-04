@@ -9,7 +9,7 @@ pipeline {
         AWS_REGION = 'us-east-1'
         INSTANCE_TYPE = 't2.micro'
         AMI_ID = 'ami-0866a3c8686eaeeba' // Change this to your required AMI
-        KEY_NAME = 'terraform.pem' // Ensure this key is available in your local SSH
+        KEY_NAME = 'terraform' // Ensure this key is available in your local SSH
         POSTGRES_USER = 'postgres'
         POSTGRES_PASSWORD = 'password'
         POSTGRES_DB = 'Jenkins_db'
