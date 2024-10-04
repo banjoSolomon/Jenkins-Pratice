@@ -8,11 +8,12 @@ pipeline {
         AWS_CREDENTIALS_ID = 'aws-credentials'
         AWS_REGION = 'us-east-1'
         INSTANCE_TYPE = 't2.micro'
-        AMI_ID = 'ami-0866a3c8686eaeeba' // Change this to your required AMI
-        KEY_NAME = 'terraform' // Ensure this key is available in your local SSH
+        AMI_ID = 'ami-0866a3c8686eaeeba'
+        KEY_NAME = 'terraform'
         POSTGRES_USER = 'postgres'
         POSTGRES_PASSWORD = 'password'
         POSTGRES_DB = 'Jenkins_db'
+        INSTANCE_NAME = 'Jenkins'
     }
 
     stages {
@@ -38,17 +39,21 @@ pipeline {
             steps {
                 script {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
-                        // Create EC2 instance
+
                         def instanceId = sh(script: """
                             aws ec2 run-instances \
                                 --image-id ${AMI_ID} \
                                 --instance-type ${INSTANCE_TYPE} \
                                 --key-name ${KEY_NAME} \
                                 --region ${AWS_REGION} \
+                                --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}}]' \
                                 --query 'Instances[0].InstanceId' \
                                 --output text
                         """, returnStdout: true).trim()
                         echo "Instance ID: ${instanceId}"
+
+                        // Wait for the instance to be running
+                        sh "aws ec2 wait instance-running --instance-ids ${instanceId}"
 
                         // Retrieve Public IP of the instance
                         def ec2PublicIp = sh(script: """
