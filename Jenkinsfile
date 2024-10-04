@@ -8,12 +8,11 @@ pipeline {
         AWS_CREDENTIALS_ID = 'aws-credentials'
         AWS_REGION = 'us-east-1'
         INSTANCE_TYPE = 't2.micro'
-        AMI_ID = 'ami-0866a3c8686eaeeba'
-        KEY_NAME = 'terraform'
+        AMI_ID = 'ami-0866a3c8686eaeeba' // Change this to your required AMI
+        KEY_NAME = 'terraform' // Ensure this key is available in your local SSH
         POSTGRES_USER = 'postgres'
         POSTGRES_PASSWORD = 'password'
         POSTGRES_DB = 'Jenkins_db'
-        INSTANCE_NAME = 'Jenkins'
     }
 
     stages {
@@ -39,21 +38,39 @@ pipeline {
             steps {
                 script {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
-
+                        // Create EC2 instance and get its ID
                         def instanceId = sh(script: """
                             aws ec2 run-instances \
                                 --image-id ${AMI_ID} \
                                 --instance-type ${INSTANCE_TYPE} \
                                 --key-name ${KEY_NAME} \
                                 --region ${AWS_REGION} \
-                                --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}}]' \
+                                --tag-specifications ResourceType=instance,Tags=[{Key=Name,Value=Jenkins}] \
                                 --query 'Instances[0].InstanceId' \
                                 --output text
                         """, returnStdout: true).trim()
                         echo "Instance ID: ${instanceId}"
 
-                        // Wait for the instance to be running
-                        sh "aws ec2 wait instance-running --instance-ids ${instanceId}"
+                        // Poll for instance state
+                        def maxAttempts = 10
+                        def attempt = 0
+                        def instanceState = ""
+
+                        while (attempt < maxAttempts) {
+                            sleep(30) // Wait for 30 seconds before checking the state
+                            instanceState = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].State.Name' --output text", returnStdout: true).trim()
+                            echo "Current state: ${instanceState}"
+
+                            if (instanceState == "running") {
+                                echo "Instance is running!"
+                                break
+                            }
+                            attempt++
+                        }
+
+                        if (instanceState != "running") {
+                            error "Instance did not enter the running state after ${maxAttempts * 30} seconds."
+                        }
 
                         // Retrieve Public IP of the instance
                         def ec2PublicIp = sh(script: """
