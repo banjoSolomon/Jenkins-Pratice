@@ -51,13 +51,13 @@ pipeline {
                         """, returnStdout: true).trim()
                         echo "Instance ID: ${instanceId}"
 
-                        // Poll for instance state
-                        def maxAttempts = 10
+                        // Poll for instance state with an extended wait time
+                        def maxAttempts = 20 // Increased attempts
                         def attempt = 0
                         def instanceState = ""
 
                         while (attempt < maxAttempts) {
-                            sleep(60) // Wait for 30 seconds before checking the state
+                            sleep(30) // Wait for 30 seconds before checking the state
                             instanceState = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].State.Name' --output text", returnStdout: true).trim()
                             echo "Current state: ${instanceState}"
 
