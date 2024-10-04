@@ -34,30 +34,28 @@ pipeline {
             }
         }
 
-        // Move the method definition outside of the stages
-        script {
-            def getInstanceState(String instanceId) {
-                def maxRetries = 3
-                def attempt = 0
-                def instanceState = ""
-
-                while (attempt < maxRetries) {
-                    try {
-                        instanceState = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].State.Name' --output text", returnStdout: true).trim()
-                        return instanceState
-                    } catch (Exception e) {
-                        echo "Attempt ${attempt + 1} failed: ${e.message}"
-                        sleep(10) // Wait before retrying
-                        attempt++
-                    }
-                }
-                error "Failed to get instance state after ${maxRetries} attempts."
-            }
-        }
-
         stage('Create EC2 Instance with Default Security Group') {
             steps {
                 script {
+                    // Define the method to get the instance state
+                    def getInstanceState(String instanceId) {
+                        def maxRetries = 3
+                        def attempt = 0
+                        def instanceState = ""
+
+                        while (attempt < maxRetries) {
+                            try {
+                                instanceState = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].State.Name' --output text", returnStdout: true).trim()
+                                return instanceState
+                            } catch (Exception e) {
+                                echo "Attempt ${attempt + 1} failed: ${e.message}"
+                                sleep(10) // Wait before retrying
+                                attempt++
+                            }
+                        }
+                        error "Failed to get instance state after ${maxRetries} attempts."
+                    }
+
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
                         // Create EC2 instance and get its ID
                         def instanceId = sh(script: """
@@ -92,7 +90,62 @@ pipeline {
             }
         }
 
-        // Remaining stages...
+        stage('Install Docker and PostgreSQL on EC2') {
+            steps {
+                script {
+                    sshagent(credentials: ['ec2-ssh-credentials']) {
+                        def ec2PublicIp = readFile('ec2_public_ip.txt').trim()
+                        sh """
+                        ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
+                        # Install Docker
+                        sudo yum update -y
+                        sudo amazon-linux-extras install docker -y
+                        sudo systemctl start docker
+                        sudo usermod -aG docker ec2-user
+
+                        # Install PostgreSQL
+                        sudo amazon-linux-extras install postgresql13 -y
+                        sudo yum install -y postgresql-server
+                        sudo postgresql-setup --initdb
+                        sudo systemctl enable postgresql
+                        sudo systemctl start postgresql
+
+                        # Configure PostgreSQL
+                        sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}';"
+                        sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};"
+                        sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"
+
+                        # Configure PostgreSQL to allow remote connections
+                        echo "listen_addresses='*'" | sudo tee -a /var/lib/pgsql/data/postgresql.conf
+                        echo "host    all             all             0.0.0.0/0               md5" | sudo tee -a /var/lib/pgsql/data/pg_hba.conf
+                        sudo systemctl restart postgresql
+                        EOF
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Run Docker Container') {
+            steps {
+                script {
+                    sshagent(credentials: ['ec2-ssh-credentials']) {
+                        def ec2PublicIp = readFile('ec2_public_ip.txt').trim()
+                        sh """
+                        ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
+                        # Run the Docker container
+                        docker run -d --name my-app-container \
+                            -e POSTGRES_USER=${POSTGRES_USER} \
+                            -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
+                            -e POSTGRES_DB=${POSTGRES_DB} \
+                            -p 80:80 \
+                            ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+                        EOF
+                        """
+                    }
+                }
+            }
+        }
     }
 
     post {
