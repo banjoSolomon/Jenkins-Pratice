@@ -16,6 +16,7 @@ pipeline {
         INSTANCE_NAME = 'Jenkins'
     }
 
+
     stages {
         stage('Clone Repository') {
             steps {
