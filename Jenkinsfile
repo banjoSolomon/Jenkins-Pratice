@@ -39,7 +39,7 @@ pipeline {
             steps {
                 script {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
-                        // Run the EC2 instance
+
                         def instanceId = sh(script: """
                             aws ec2 run-instances \
                                 --image-id ${AMI_ID} \
@@ -52,7 +52,9 @@ pipeline {
                         """, returnStdout: true).trim()
                         echo "Instance ID: ${instanceId}"
 
-                        // Wait for the instance to be in a running state
+                        // Add a short delay to allow AWS to register the instance
+                        sh "sleep 30"
+
                         sh "aws ec2 wait instance-running --instance-ids ${instanceId}"
 
                         // Fetch the public IP address of the instance
