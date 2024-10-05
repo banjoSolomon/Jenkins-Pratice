@@ -14,6 +14,7 @@ pipeline {
         POSTGRES_PASSWORD = 'password'
         POSTGRES_DB = 'Jenkins_db'
         INSTANCE_NAME = 'Jenkins'
+        VPC_ID = 'vpc-0854607cdd1c70597' // Add your VPC ID here
     }
 
     stages {
@@ -39,9 +40,9 @@ pipeline {
             steps {
                 script {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
-                        // Create security group with SSH and HTTP access
+                        // Create security group within the correct VPC
                         def securityGroupId = sh(script: """
-                            aws ec2 create-security-group --group-name my-security-group --description 'Security group for EC2 instance' --query 'GroupId' --output text
+                            aws ec2 create-security-group --group-name my-security-group --description 'Security group for EC2 instance' --vpc-id ${VPC_ID} --query 'GroupId' --output text
                         """, returnStdout: true).trim()
 
                         echo "Security Group ID: ${securityGroupId}"
