@@ -39,7 +39,6 @@ pipeline {
             steps {
                 script {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
-
                         def instanceId = sh(script: """
                             aws ec2 run-instances \
                                 --image-id ${AMI_ID} \
@@ -52,10 +51,13 @@ pipeline {
                         """, returnStdout: true).trim()
                         echo "Instance ID: ${instanceId}"
 
-                        // Add a short delay to allow AWS to register the instance
-                        sh "sleep 30"
+                        // Add a longer delay to allow AWS to register the instance
+                        sh "sleep 60"
 
-                        sh "aws ec2 wait instance-running --instance-ids ${instanceId}"
+                        // Retry mechanism for instance-running wait
+                        retry(3) {
+                            sh "aws ec2 wait instance-running --instance-ids ${instanceId}"
+                        }
 
                         // Fetch the public IP address of the instance
                         def ec2PublicIp = sh(script: """
@@ -81,11 +83,11 @@ pipeline {
                         def ec2PublicIp = readFile('ec2_public_ip.txt').trim()
                         sh """
                         ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
-                        # Install Docker
-                        sudo yum update -y
-                        sudo amazon-linux-extras install docker -y
+                        # Update and install Docker on Ubuntu
+                        sudo apt-get update
+                        sudo apt-get install -y docker.io
                         sudo systemctl start docker
-                        sudo usermod -aG docker ec2-user
+                        sudo usermod -aG docker \$USER
 
                         # Wait for Docker to be ready
                         for i in {1..10}; do
@@ -95,10 +97,8 @@ pipeline {
                             sleep 5
                         done
 
-                        # Install PostgreSQL
-                        sudo amazon-linux-extras install postgresql13 -y
-                        sudo yum install -y postgresql-server
-                        sudo postgresql-setup --initdb
+                        # Install PostgreSQL on Ubuntu
+                        sudo apt-get install -y postgresql postgresql-contrib
                         sudo systemctl enable postgresql
                         sudo systemctl start postgresql
 
@@ -116,8 +116,8 @@ pipeline {
                         sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"
 
                         # Configure PostgreSQL to allow remote connections
-                        echo "listen_addresses='*'" | sudo tee -a /var/lib/pgsql/data/postgresql.conf
-                        echo "host    all             all             0.0.0.0/0               md5" | sudo tee -a /var/lib/pgsql/data/pg_hba.conf
+                        echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/13/main/postgresql.conf
+                        echo "host    all             all             0.0.0.0/0               md5" | sudo tee -a /etc/postgresql/13/main/pg_hba.conf
                         sudo systemctl restart postgresql
                         EOF
                         """
