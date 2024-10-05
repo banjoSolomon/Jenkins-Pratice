@@ -23,7 +23,6 @@ pipeline {
             }
         }
 
-
         stage('Build and Push Docker Image') {
             steps {
                 script {
@@ -64,18 +63,19 @@ def buildAndPushDockerImage() {
 
 def createSecurityGroup() {
     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
+        def securityGroupName = "my-security-group-${System.currentTimeMillis()}"
         def securityGroupId = sh(script: """
-            aws ec2 create-security-group --group-name my-security-group --description 'Security group for EC2 instance' --query 'GroupId' --output text --region ${AWS_REGION}
+            aws ec2 create-security-group --group-name ${securityGroupName} --description 'Security group for EC2 instance' --query 'GroupId' --output text --region ${AWS_REGION}
         """, returnStdout: true).trim()
 
         echo "Security Group ID: ${securityGroupId}"
 
         // Allow SSH and HTTP access
-
         sh """
             aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 22 --cidr 0.0.0.0/0 --region ${AWS_REGION}
             aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 80 --cidr 0.0.0.0/0 --region ${AWS_REGION}
         """
+
         return securityGroupId
     }
 }
