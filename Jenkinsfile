@@ -6,7 +6,7 @@ pipeline {
         DOCKER_IMAGE_NAME = 'solomon11/jenkins'
         DOCKER_IMAGE_TAG = 'latest'
         AWS_CREDENTIALS_ID = 'aws-credentials'
-        AWS_REGION = 'us-east-1a'
+        AWS_REGION = 'us-east-1'
         INSTANCE_TYPE = 't2.micro'
         AMI_ID = 'ami-0866a3c8686eaeeba'
         KEY_NAME = 'terraform'
