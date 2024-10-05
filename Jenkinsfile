@@ -142,9 +142,13 @@ def setupEC2Instance(String ec2PublicIp) {
         # Get the installed PostgreSQL version
         PG_VERSION=\$(psql --version | awk '{print \$3}' | cut -d '.' -f 1)
 
-        # PostgreSQL setup
-        sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}';"
-        sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};"
+        # PostgreSQL setup: Create user if not exists
+        sudo -i -u postgres psql -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${POSTGRES_USER}') THEN CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}'; END IF; END \$\$;"
+
+        # Create database if not exists
+        sudo -i -u postgres psql -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_database WHERE datname = '${POSTGRES_DB}') THEN CREATE DATABASE ${POSTGRES_DB}; END IF; END \$\$;"
+
+        # Grant privileges
         sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"
 
         # Allow remote connections
@@ -172,7 +176,6 @@ def waitForPostgreSQL(String ec2PublicIp) {
         }
     }
 }
-
 
 def runDockerContainer(String ec2PublicIp) {
     sshagent (credentials: ['ec2-ssh-credentials']) {
