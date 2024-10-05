@@ -6,7 +6,7 @@ pipeline {
         DOCKER_IMAGE_NAME = 'solomon11/jenkins'
         DOCKER_IMAGE_TAG = 'latest'
         AWS_CREDENTIALS_ID = 'aws-credentials'
-        AWS_REGION = 'us-east-1'
+        AWS_REGION = 'us-east-1a'
         INSTANCE_TYPE = 't2.micro'
         AMI_ID = 'ami-0866a3c8686eaeeba'
         KEY_NAME = 'terraform'
@@ -14,6 +14,7 @@ pipeline {
         POSTGRES_PASSWORD = 'password'
         POSTGRES_DB = 'Jenkins_db'
         INSTANCE_NAME = 'Jenkins'
+        SECURITY_GROUP_NAME = 'my-security-group'
     }
 
     stages {
@@ -35,40 +36,15 @@ pipeline {
             }
         }
 
-        stage('Create EC2 Instance') {
+        stage('Setup EC2 Instance') {
             steps {
                 script {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
-                        // Launch EC2 instance without specifying a security group (using default security group)
-                        def instanceId = sh(script: """
-                            aws ec2 run-instances \
-                                --image-id ${AMI_ID} \
-                                --instance-type ${INSTANCE_TYPE} \
-                                --key-name ${KEY_NAME} \
-                                --region ${AWS_REGION} \
-                                --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}}]' \
-                                --query 'Instances[0].InstanceId' \
-                                --output text
-                        """, returnStdout: true).trim()
+                        def securityGroupId = createSecurityGroup()
+                        def instanceId = launchInstance(securityGroupId)
+                        waitForInstance(instanceId)
+                        def ec2PublicIp = getPublicIp(instanceId)
 
-                        echo "Instance ID: ${instanceId}"
-
-                        // Wait until the instance is running
-                        retry(3) {
-                            sh "aws ec2 wait instance-running --instance-ids ${instanceId}"
-                        }
-
-                        // Get the public IP
-                        def ec2PublicIp = sh(script: """
-                            aws ec2 describe-instances \
-                                --instance-ids ${instanceId} \
-                                --query 'Reservations[0].Instances[0].PublicIpAddress' \
-                                --output text
-                        """, returnStdout: true).trim()
-
-                        echo "Public IP: ${ec2PublicIp}"
-
-                        // Save instance details
                         writeFile file: 'instance_id.txt', text: instanceId
                         writeFile file: 'ec2_public_ip.txt', text: ec2PublicIp
                     }
@@ -76,33 +52,12 @@ pipeline {
             }
         }
 
-        stage('Install Docker and PostgreSQL on EC2') {
+        stage('Configure EC2 Instance') {
             steps {
                 script {
                     sshagent (credentials: ['ec2-ssh-credentials']) {
                         def ec2PublicIp = readFile('ec2_public_ip.txt').trim()
-                        sh """
-                        ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
-                        sudo yum update -y
-                        sudo amazon-linux-extras install docker
-                        sudo service docker start
-                        sudo usermod -a -G docker ec2-user
-
-                        sudo yum install -y postgresql postgresql-server postgresql-devel
-                        sudo postgresql-setup initdb
-                        sudo systemctl start postgresql
-                        sudo systemctl enable postgresql
-
-                        # Configure PostgreSQL
-                        sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}';"
-                        sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};"
-                        sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"
-
-                        echo "listen_addresses='*'" | sudo tee -a /var/lib/pgsql/data/postgresql.conf
-                        echo "host    all             all             0.0.0.0/0               md5" | sudo tee -a /var/lib/pgsql/data/pg_hba.conf
-                        sudo systemctl restart postgresql
-                        EOF
-                        """
+                        configureInstance(ec2PublicIp)
                     }
                 }
             }
@@ -113,16 +68,7 @@ pipeline {
                 script {
                     sshagent (credentials: ['ec2-ssh-credentials']) {
                         def ec2PublicIp = readFile('ec2_public_ip.txt').trim()
-                        sh """
-                        ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
-                        docker run -d --name my-app-container \
-                            -e POSTGRES_USER=${POSTGRES_USER} \
-                            -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
-                            -e POSTGRES_DB=${POSTGRES_DB} \
-                            -p 80:80 \
-                            ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
-                        EOF
-                        """
+                        runDockerContainer(ec2PublicIp)
                     }
                 }
             }
@@ -134,4 +80,96 @@ pipeline {
             cleanWs()
         }
     }
+}
+
+// Function to create a security group
+def createSecurityGroup() {
+    def securityGroupId = sh(script: """
+        aws ec2 create-security-group --group-name ${env.SECURITY_GROUP_NAME} --description 'Security group for EC2 instance' --query 'GroupId' --output text
+    """, returnStdout: true).trim()
+
+    echo "Security Group ID: ${securityGroupId}"
+
+    // Add rules to allow SSH (22) and HTTP (80)
+    sh """
+        aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 22 --cidr 0.0.0.0/0
+        aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 80 --cidr 0.0.0.0/0
+    """
+
+    return securityGroupId
+}
+
+// Function to launch an EC2 instance
+def launchInstance(securityGroupId) {
+    def instanceId = sh(script: """
+        aws ec2 run-instances \
+            --image-id ${env.AMI_ID} \
+            --instance-type ${env.INSTANCE_TYPE} \
+            --key-name ${env.KEY_NAME} \
+            --security-group-ids ${securityGroupId} \
+            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=${env.INSTANCE_NAME}}]' \
+            --query 'Instances[0].InstanceId' \
+            --output text
+    """, returnStdout: true).trim()
+
+    echo "Created Instance ID: ${instanceId}"
+    return instanceId
+}
+
+// Function to wait until the instance is running
+def waitForInstance(instanceId) {
+    retry(3) {
+        sh "aws ec2 wait instance-running --instance-ids ${instanceId} --region ${env.AWS_REGION}"
+    }
+}
+
+// Function to get the public IP of the EC2 instance
+def getPublicIp(instanceId) {
+    def ec2PublicIp = sh(script: """
+        aws ec2 describe-instances \
+            --instance-ids ${instanceId} \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text
+    """, returnStdout: true).trim()
+
+    echo "Public IP: ${ec2PublicIp}"
+    return ec2PublicIp
+}
+
+// Function to configure the EC2 instance
+def configureInstance(ec2PublicIp) {
+    sh """
+    ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
+        sudo apt-get update
+        sudo apt-get install -y docker.io postgresql postgresql-contrib
+        sudo systemctl start docker
+        sudo systemctl enable docker
+
+        sudo systemctl start postgresql
+        sudo systemctl enable postgresql
+
+        # Configure PostgreSQL
+        sudo -i -u postgres psql -c "CREATE USER ${env.POSTGRES_USER} WITH PASSWORD '${env.POSTGRES_PASSWORD}';"
+        sudo -i -u postgres psql -c "CREATE DATABASE ${env.POSTGRES_DB};"
+        sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${env.POSTGRES_DB} TO ${env.POSTGRES_USER};"
+
+        echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/13/main/postgresql.conf
+        echo "host    all             all             0.0.0.0/0               md5" | sudo tee -a /etc/postgresql/13/main/pg_hba.conf
+        sudo systemctl restart postgresql
+    EOF
+    """
+}
+
+// Function to run the Docker container
+def runDockerContainer(ec2PublicIp) {
+    sh """
+    ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
+        docker run -d --name my-app-container \
+            -e POSTGRES_USER=${env.POSTGRES_USER} \
+            -e POSTGRES_PASSWORD=${env.POSTGRES_PASSWORD} \
+            -e POSTGRES_DB=${env.POSTGRES_DB} \
+            -p 80:80 \
+            ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}
+    EOF
+    """
 }
