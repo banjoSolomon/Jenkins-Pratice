@@ -143,10 +143,10 @@ def setupEC2Instance(String ec2PublicIp) {
         PG_VERSION=\$(psql --version | awk '{print \$3}' | cut -d '.' -f 1)
 
         # PostgreSQL setup: Create user if not exists
-        sudo -i -u postgres psql -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${POSTGRES_USER}') THEN CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}'; END IF; END \$\$;"
+        sudo -i -u postgres psql -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = '${POSTGRES_USER}') THEN CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}'; END IF; END \$\$;"
 
         # Create database if not exists
-        sudo -i -u postgres psql -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_database WHERE datname = '${POSTGRES_DB}') THEN CREATE DATABASE ${POSTGRES_DB}; END IF; END \$\$;"
+        sudo -i -u postgres psql -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${POSTGRES_DB}') THEN CREATE DATABASE ${POSTGRES_DB}; END IF; END \$\$;"
 
         # Grant privileges
         sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"
@@ -161,19 +161,9 @@ def setupEC2Instance(String ec2PublicIp) {
 }
 
 def waitForPostgreSQL(String ec2PublicIp) {
-    sshagent (credentials: ['ec2-ssh-credentials']) {
-        retry(5) {
-            sleep 10
-            def postgresStatus = sh(script: """
-                ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} "sudo systemctl is-active postgresql"
-            """, returnStdout: true).trim()
-
-            echo "PostgreSQL status: ${postgresStatus}"
-
-            if (postgresStatus != "active") {
-                error("PostgreSQL not active yet, waiting...")
-            }
-        }
+    retry(5) {
+        sleep 20
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'"
     }
 }
 
@@ -181,12 +171,7 @@ def runDockerContainer(String ec2PublicIp) {
     sshagent (credentials: ['ec2-ssh-credentials']) {
         sh """
         ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} <<EOF
-        docker run -d --name my-app-container \
-            -e POSTGRES_USER=${POSTGRES_USER} \
-            -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
-            -e POSTGRES_DB=${POSTGRES_DB} \
-            -p 80:80 \
-            ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+        sudo docker run -d -p 8080:8080 --name my-jenkins ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
         EOF
         """
     }
