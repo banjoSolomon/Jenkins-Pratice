@@ -38,6 +38,7 @@ pipeline {
                     def instanceId = launchEC2Instance(securityGroupId)
                     def ec2PublicIp = getInstancePublicIp(instanceId)
                     setupEC2Instance(ec2PublicIp)
+                    waitForPostgreSQL(ec2PublicIp)
                     runDockerContainer(ec2PublicIp)
                 }
             }
@@ -108,7 +109,6 @@ def waitForInstanceToBeRunning(String instanceId) {
 
         if (instanceState != "running") {
             error("Instance not ready yet, waiting...")
-
         }
     }
 }
@@ -148,6 +148,23 @@ def setupEC2Instance(String ec2PublicIp) {
         sudo systemctl restart postgresql
         EOF
         """
+    }
+}
+
+def waitForPostgreSQL(String ec2PublicIp) {
+    sshagent (credentials: ['ec2-ssh-credentials']) {
+        retry(5) {
+            sleep 10
+            def postgresStatus = sh(script: """
+                ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} "sudo systemctl is-active postgresql"
+            """, returnStdout: true).trim()
+
+            echo "PostgreSQL status: ${postgresStatus}"
+
+            if (postgresStatus != "active") {
+                error("PostgreSQL not active yet, waiting...")
+            }
+        }
     }
 }
 
