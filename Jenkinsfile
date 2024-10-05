@@ -14,7 +14,6 @@ pipeline {
         POSTGRES_PASSWORD = 'password'
         POSTGRES_DB = 'Jenkins_db'
         INSTANCE_NAME = 'Jenkins'
-        VPC_ID = 'vpc-0854607cdd1c70597' // Add your VPC ID here
     }
 
     stages {
@@ -36,54 +35,23 @@ pipeline {
             }
         }
 
-        stage('Create EC2 Instance and Security Group') {
+        stage('Create EC2 Instance') {
             steps {
                 script {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
-                        // Create security group within the correct VPC
-                        def securityGroupId = sh(script: """
-                            aws ec2 create-security-group --group-name my-security-group --description 'Security group for EC2 instance' --vpc-id ${VPC_ID} --query 'GroupId' --output text
-                        """, returnStdout: true).trim()
-
-                        echo "Security Group ID: ${securityGroupId}"
-
-                        // Add rules to allow SSH (22) and HTTP (80)
-                        sh """
-                            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 22 --cidr 0.0.0.0/0
-                            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 80 --cidr 0.0.0.0/0
-                        """
-
-                        // Launch EC2 instance with security group
+                        // Launch EC2 instance without specifying a security group (using default security group)
                         def instanceId = sh(script: """
                             aws ec2 run-instances \
                                 --image-id ${AMI_ID} \
                                 --instance-type ${INSTANCE_TYPE} \
                                 --key-name ${KEY_NAME} \
                                 --region ${AWS_REGION} \
-                                --security-group-ids ${securityGroupId} \
                                 --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}}]' \
                                 --query 'Instances[0].InstanceId' \
                                 --output text
                         """, returnStdout: true).trim()
 
                         echo "Instance ID: ${instanceId}"
-
-                        // Check if the instance is in the 'pending' or 'running' state
-                        retry(5) {
-                            sleep 20
-                            def instanceState = sh(script: """
-                                aws ec2 describe-instances \
-                                    --instance-ids ${instanceId} \
-                                    --query 'Reservations[0].Instances[0].State.Name' \
-                                    --output text
-                            """, returnStdout: true).trim()
-
-                            echo "Instance state: ${instanceState}"
-
-                            if (instanceState != "pending" && instanceState != "running") {
-                                error("Waiting for instance to be registered")
-                            }
-                        }
 
                         // Wait until the instance is running
                         retry(3) {
@@ -115,11 +83,13 @@ pipeline {
                         def ec2PublicIp = readFile('ec2_public_ip.txt').trim()
                         sh """
                         ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
-                        sudo apt-get update
-                        sudo apt-get install -y docker.io postgresql postgresql-contrib
-                        sudo systemctl start docker
-                        sudo systemctl enable docker
+                        sudo yum update -y
+                        sudo amazon-linux-extras install docker
+                        sudo service docker start
+                        sudo usermod -a -G docker ec2-user
 
+                        sudo yum install -y postgresql postgresql-server postgresql-devel
+                        sudo postgresql-setup initdb
                         sudo systemctl start postgresql
                         sudo systemctl enable postgresql
 
@@ -128,8 +98,8 @@ pipeline {
                         sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};"
                         sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"
 
-                        echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/13/main/postgresql.conf
-                        echo "host    all             all             0.0.0.0/0               md5" | sudo tee -a /etc/postgresql/13/main/pg_hba.conf
+                        echo "listen_addresses='*'" | sudo tee -a /var/lib/pgsql/data/postgresql.conf
+                        echo "host    all             all             0.0.0.0/0               md5" | sudo tee -a /var/lib/pgsql/data/pg_hba.conf
                         sudo systemctl restart postgresql
                         EOF
                         """
