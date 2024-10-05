@@ -173,6 +173,7 @@ def waitForPostgreSQL(String ec2PublicIp) {
     }
 }
 
+
 def runDockerContainer(String ec2PublicIp) {
     sshagent (credentials: ['ec2-ssh-credentials']) {
         sh """
