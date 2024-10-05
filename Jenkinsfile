@@ -70,6 +70,7 @@ def createSecurityGroup() {
         echo "Security Group ID: ${securityGroupId}"
 
         // Allow SSH and HTTP access
+
         sh """
             aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 22 --cidr 0.0.0.0/0 --region ${AWS_REGION}
             aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 80 --cidr 0.0.0.0/0 --region ${AWS_REGION}
