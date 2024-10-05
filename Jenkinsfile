@@ -130,7 +130,7 @@ def getInstancePublicIp(String instanceId) {
 def setupEC2Instance(String ec2PublicIp) {
     sshagent (credentials: ['ec2-ssh-credentials']) {
         sh """
-        ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} <<EOF
+        ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} << 'EOF'
         # Update package list and install required packages
         sudo apt-get update
         sudo apt-get install -y docker.io postgresql postgresql-contrib
@@ -154,7 +154,12 @@ def setupEC2Instance(String ec2PublicIp) {
 
         # Configure PostgreSQL for remote access
         PG_VERSION=\$(psql -V | awk '{print \$3}' | cut -d '.' -f 1)
-        echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/\${PG_VERSION}/main/postgresql.conf
+
+        # Create directory if it doesn't exist
+        sudo mkdir -p /etc/postgresql/\${PG_VERSION}/main/
+
+        # Write configuration
+        echo "listen_addresses='*'" | sudo tee /etc/postgresql/\${PG_VERSION}/main/postgresql.conf
         echo "host all all 0.0.0.0/0 md5" | sudo tee -a /etc/postgresql/\${PG_VERSION}/main/pg_hba.conf
 
         # Restart PostgreSQL to apply changes
