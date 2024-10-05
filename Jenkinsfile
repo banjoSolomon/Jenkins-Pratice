@@ -148,7 +148,7 @@ def setupEC2Instance(String ec2PublicIp) {
         sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"
 
         # Allow remote connections
-        echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/\${PG_VERSION}/main/postgresql.conf
+        echo "listen_addresses='*'" | sudo tee /etc/postgresql/\${PG_VERSION}/main/postgresql.conf
         echo "host all all 0.0.0.0/0 md5" | sudo tee -a /etc/postgresql/\${PG_VERSION}/main/pg_hba.conf
         sudo systemctl restart postgresql
         EOF
