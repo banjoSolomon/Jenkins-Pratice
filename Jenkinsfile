@@ -16,7 +16,6 @@ pipeline {
         INSTANCE_NAME = 'Jenkins'
     }
 
-
     stages {
         stage('Clone Repository') {
             steps {
@@ -140,14 +139,17 @@ def setupEC2Instance(String ec2PublicIp) {
         sudo systemctl start postgresql
         sudo systemctl enable postgresql
 
+        # Get the installed PostgreSQL version
+        PG_VERSION=\$(psql --version | awk '{print \$3}' | cut -d '.' -f 1)
+
         # PostgreSQL setup
         sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}';"
         sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};"
         sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"
 
         # Allow remote connections
-        echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/13/main/postgresql.conf
-        echo "host all all 0.0.0.0/0 md5" | sudo tee -a /etc/postgresql/13/main/pg_hba.conf
+        echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/\${PG_VERSION}/main/postgresql.conf
+        echo "host all all 0.0.0.0/0 md5" | sudo tee -a /etc/postgresql/\${PG_VERSION}/main/pg_hba.conf
         sudo systemctl restart postgresql
         EOF
         """
