@@ -14,7 +14,7 @@ pipeline {
         POSTGRES_PASSWORD = 'password'
         POSTGRES_DB = 'Jenkins_db'
         INSTANCE_NAME = 'Jenkins'
-        SECURITY_GROUP_NAME = 'my-security-group'
+        SECURITY_GROUP_NAME = 'Jenkins_security'
     }
 
     stages {
@@ -27,11 +27,8 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                        sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin"
-                        sh "docker build -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
-                        sh "docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                    }
+                    dockerLogin()
+                    buildAndPushDockerImage()
                 }
             }
         }
@@ -40,11 +37,10 @@ pipeline {
             steps {
                 script {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
-                        def securityGroupId = createSecurityGroup()
+                        def securityGroupId = setupSecurityGroup()
                         def instanceId = launchInstance(securityGroupId)
                         waitForInstance(instanceId)
                         def ec2PublicIp = getPublicIp(instanceId)
-
                         writeFile file: 'instance_id.txt', text: instanceId
                         writeFile file: 'ec2_public_ip.txt', text: ec2PublicIp
                     }
@@ -56,8 +52,7 @@ pipeline {
             steps {
                 script {
                     sshagent (credentials: ['ec2-ssh-credentials']) {
-                        def ec2PublicIp = readFile('ec2_public_ip.txt').trim()
-                        configureInstance(ec2PublicIp)
+                        configureInstance(readFile('ec2_public_ip.txt').trim())
                     }
                 }
             }
@@ -67,8 +62,7 @@ pipeline {
             steps {
                 script {
                     sshagent (credentials: ['ec2-ssh-credentials']) {
-                        def ec2PublicIp = readFile('ec2_public_ip.txt').trim()
-                        runDockerContainer(ec2PublicIp)
+                        runDockerContainer(readFile('ec2_public_ip.txt').trim())
                     }
                 }
             }
@@ -82,24 +76,42 @@ pipeline {
     }
 }
 
-// Function to create a security group
-def createSecurityGroup() {
-    def securityGroupId = sh(script: """
-        aws ec2 create-security-group --group-name ${env.SECURITY_GROUP_NAME} --description 'Security group for EC2 instance' --query 'GroupId' --output text
-    """, returnStdout: true).trim()
+// Function to log in to Docker
+def dockerLogin() {
+    withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+        sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin"
+    }
+}
 
-    echo "Security Group ID: ${securityGroupId}"
+// Function to build and push Docker image
+def buildAndPushDockerImage() {
+    sh "docker build -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
+    sh "docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+}
 
-    // Add rules to allow SSH (22) and HTTP (80)
-    sh """
-        aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 22 --cidr 0.0.0.0/0
-        aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 80 --cidr 0.0.0.0/0
-    """
+// Function to setup security group
+def setupSecurityGroup() {
+    def securityGroupId = sh(script: "aws ec2 describe-security-groups --group-names ${env.SECURITY_GROUP_NAME} --query 'SecurityGroups[0].GroupId' --output text || true", returnStdout: true).trim()
+
+    if (!securityGroupId) {
+        securityGroupId = sh(script: """
+            aws ec2 create-security-group --group-name ${env.SECURITY_GROUP_NAME} --description 'Security group for EC2 instance' --query 'GroupId' --output text
+        """, returnStdout: true).trim()
+        echo "Created Security Group ID: ${securityGroupId}"
+
+        // Add ingress rules
+        sh """
+            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 22 --cidr 0.0.0.0/0
+            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 80 --cidr 0.0.0.0/0
+        """
+    } else {
+        echo "Security Group already exists: ${securityGroupId}"
+    }
 
     return securityGroupId
 }
 
-// Function to launch an EC2 instance
+// Function to launch EC2 instance
 def launchInstance(securityGroupId) {
     def instanceId = sh(script: """
         aws ec2 run-instances \
@@ -116,14 +128,14 @@ def launchInstance(securityGroupId) {
     return instanceId
 }
 
-// Function to wait until the instance is running
+// Function to wait for EC2 instance to be running
 def waitForInstance(instanceId) {
     retry(3) {
         sh "aws ec2 wait instance-running --instance-ids ${instanceId} --region ${env.AWS_REGION}"
     }
 }
 
-// Function to get the public IP of the EC2 instance
+// Function to get public IP of EC2 instance
 def getPublicIp(instanceId) {
     def ec2PublicIp = sh(script: """
         aws ec2 describe-instances \
@@ -136,7 +148,7 @@ def getPublicIp(instanceId) {
     return ec2PublicIp
 }
 
-// Function to configure the EC2 instance
+// Function to configure EC2 instance
 def configureInstance(ec2PublicIp) {
     sh """
     ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
