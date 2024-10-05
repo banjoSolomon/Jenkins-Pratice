@@ -108,6 +108,7 @@ def waitForInstanceToBeRunning(String instanceId) {
 
         if (instanceState != "running") {
             error("Instance not ready yet, waiting...")
+
         }
     }
 }
