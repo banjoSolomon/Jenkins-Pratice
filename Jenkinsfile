@@ -1,22 +1,41 @@
-def AWS_CREDENTIALS_ID = 'your-aws-credentials-id'
-def AMI_ID = 'your-ami-id'
-def INSTANCE_TYPE = 'your-instance-type'
-def KEY_NAME = 'your-key-name'
-def AWS_REGION = 'your-aws-region'
-def POSTGRES_USER = 'your-postgres-user'
-def POSTGRES_PASSWORD = 'your-postgres-password'
-def POSTGRES_DB = 'your-postgres-db'
-def DOCKER_IMAGE_NAME = 'your-docker-image-name'
-def DOCKER_IMAGE_TAG = 'your-docker-image-tag'
-
 pipeline {
     agent any
 
+    environment {
+        DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
+        DOCKER_IMAGE_NAME = 'solomon11/jenkins'
+        DOCKER_IMAGE_TAG = 'latest'
+        AWS_CREDENTIALS_ID = 'aws-credentials'
+        AWS_REGION = 'us-east-1'
+        INSTANCE_TYPE = 't2.micro'
+        AMI_ID = 'ami-0866a3c8686eaeeba'
+        KEY_NAME = 'terraform'
+        POSTGRES_USER = 'postgres'
+        POSTGRES_PASSWORD = 'password'
+        POSTGRES_DB = 'Jenkins_db'
+        INSTANCE_NAME = 'Jenkins'
+    }
+
     stages {
-        stage('Create EC2 Instance') {
+        stage('Clone Repository') {
+            steps {
+                git branch: 'in-dev', url: 'https://github.com/banjoSolomon/Jenkins-Pratice.git'
+            }
+        }
+
+        stage('Build and Push Docker Image') {
             steps {
                 script {
-                    def instanceId = createEC2Instance()
+                    buildAndPushDockerImage()
+                }
+            }
+        }
+
+        stage('Setup EC2 Environment') {
+            steps {
+                script {
+                    def securityGroupId = createSecurityGroup()
+                    def instanceId = launchEC2Instance(securityGroupId)
                     def ec2PublicIp = getInstancePublicIp(instanceId)
                     setupEC2Instance(ec2PublicIp)
                     waitForPostgreSQL(ec2PublicIp)
@@ -25,13 +44,54 @@ pipeline {
             }
         }
     }
+
+    post {
+        always {
+            cleanWs() // Clean workspace after execution
+        }
+    }
 }
 
-def createEC2Instance() {
+// Helper functions
+def buildAndPushDockerImage() {
+    withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+        sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin"
+        sh "docker build -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
+        sh "docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+    }
+}
+
+def createSecurityGroup() {
+    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
+        def securityGroupName = "my-security-group-${System.currentTimeMillis()}"
+        def securityGroupId = sh(script: """
+            aws ec2 create-security-group --group-name ${securityGroupName} --description 'Security group for EC2 instance' --query 'GroupId' --output text --region ${AWS_REGION}
+        """, returnStdout: true).trim()
+
+        echo "Security Group ID: ${securityGroupId}"
+
+        // Allow SSH and HTTP access
+        sh """
+            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 22 --cidr 0.0.0.0/0 --region ${AWS_REGION}
+            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 80 --cidr 0.0.0.0/0 --region ${AWS_REGION}
+        """
+
+        return securityGroupId
+    }
+}
+
+def launchEC2Instance(String securityGroupId) {
     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
         def instanceId = sh(script: """
-            aws ec2 run-instances --image-id ${AMI_ID} --count 1 --instance-type ${INSTANCE_TYPE} --key-name ${KEY_NAME} --query 'Instances[0].InstanceId' \
-                --output text --region ${AWS_REGION}
+            aws ec2 run-instances \
+                --image-id ${AMI_ID} \
+                --instance-type ${INSTANCE_TYPE} \
+                --key-name ${KEY_NAME} \
+                --region ${AWS_REGION} \
+                --security-group-ids ${securityGroupId} \
+                --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}}]' \
+                --query 'Instances[0].InstanceId' \
+                --output text
         """, returnStdout: true).trim()
 
         echo "Instance ID: ${instanceId}"
@@ -71,7 +131,6 @@ def setupEC2Instance(String ec2PublicIp) {
     sshagent (credentials: ['ec2-ssh-credentials']) {
         sh """
         ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} << 'EOF'
-        set -x  # Enable verbose logging
         # Update package list and install required packages
         sudo apt-get update
         sudo apt-get install -y docker.io postgresql postgresql-contrib
@@ -83,9 +142,6 @@ def setupEC2Instance(String ec2PublicIp) {
         # Start and enable PostgreSQL
         sudo systemctl start postgresql
         sudo systemctl enable postgresql
-
-        # Check PostgreSQL status
-        sudo systemctl status postgresql
 
         # Create PostgreSQL user if it does not exist
         sudo -i -u postgres psql -c "SELECT 1 FROM pg_roles WHERE rolname = '${POSTGRES_USER}'" | grep -q 1 || sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}';"
@@ -108,9 +164,6 @@ def setupEC2Instance(String ec2PublicIp) {
 
         # Restart PostgreSQL to apply changes
         sudo systemctl restart postgresql
-
-        # Verify PostgreSQL is running
-        sudo systemctl status postgresql
         EOF
         """
     }
@@ -126,7 +179,7 @@ def waitForPostgreSQL(String ec2PublicIp) {
 def runDockerContainer(String ec2PublicIp) {
     sshagent (credentials: ['ec2-ssh-credentials']) {
         sh """
-        ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} <<EOF
+        ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} << 'EOF'
         sudo docker run -d -p 8080:8080 --name my-jenkins ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
         EOF
         """
