@@ -131,29 +131,33 @@ def setupEC2Instance(String ec2PublicIp) {
     sshagent (credentials: ['ec2-ssh-credentials']) {
         sh """
         ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} <<EOF
+        # Update package list and install required packages
         sudo apt-get update
         sudo apt-get install -y docker.io postgresql postgresql-contrib
+
+        # Start and enable Docker
         sudo systemctl start docker
         sudo systemctl enable docker
 
+        # Start and enable PostgreSQL
         sudo systemctl start postgresql
         sudo systemctl enable postgresql
 
-        # Get the installed PostgreSQL version
-        PG_VERSION=\$(psql --version | awk '{print \$3}' | cut -d '.' -f 1)
+        # Create PostgreSQL user if it does not exist
+        sudo -i -u postgres psql -c "SELECT 1 FROM pg_roles WHERE rolname = '${POSTGRES_USER}'" | grep -q 1 || sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}';"
 
-        # PostgreSQL setup: Create user if not exists
-        sudo -i -u postgres psql -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = '${POSTGRES_USER}') THEN CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}'; END IF; END \$\$;"
-
-        # Create database if not exists
-        sudo -i -u postgres psql -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${POSTGRES_DB}') THEN CREATE DATABASE ${POSTGRES_DB}; END IF; END \$\$;"
+        # Create database if it does not exist
+        sudo -i -u postgres psql -c "SELECT 1 FROM pg_database WHERE datname = '${POSTGRES_DB}'" | grep -q 1 || sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};"
 
         # Grant privileges
         sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"
 
-        # Allow remote connections
+        # Configure PostgreSQL for remote access
+        PG_VERSION=\$(psql -V | awk '{print \$3}' | cut -d '.' -f 1)
         echo "listen_addresses='*'" | sudo tee /etc/postgresql/\${PG_VERSION}/main/postgresql.conf
         echo "host all all 0.0.0.0/0 md5" | sudo tee -a /etc/postgresql/\${PG_VERSION}/main/pg_hba.conf
+
+        # Restart PostgreSQL to apply changes
         sudo systemctl restart postgresql
         EOF
         """
