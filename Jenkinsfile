@@ -6,7 +6,7 @@ pipeline {
         DOCKER_IMAGE_NAME = 'solomon11/jenkins'
         DOCKER_IMAGE_TAG = 'latest'
         AWS_CREDENTIALS_ID = 'aws-credentials'
-        AWS_REGION = 'us-east-1'
+        AWS_REGION = 'us-east-1a'
         INSTANCE_TYPE = 't2.micro'
         AMI_ID = 'ami-0866a3c8686eaeeba'
         KEY_NAME = 'terraform'
@@ -14,7 +14,6 @@ pipeline {
         POSTGRES_PASSWORD = 'password'
         POSTGRES_DB = 'Jenkins_db'
         INSTANCE_NAME = 'Jenkins'
-        SECURITY_GROUP_NAME = 'Jenkins_security'
     }
 
     stages {
@@ -24,46 +23,22 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build and Push Docker Image') {
             steps {
                 script {
-                    dockerLogin()
                     buildAndPushDockerImage()
                 }
             }
         }
 
-        stage('Setup EC2 Instance') {
+        stage('Setup EC2 Environment') {
             steps {
                 script {
-                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
-                        def securityGroupId = setupSecurityGroup()
-                        def instanceId = launchInstance(securityGroupId)
-                        waitForInstance(instanceId)
-                        def ec2PublicIp = getPublicIp(instanceId)
-                        writeFile file: 'instance_id.txt', text: instanceId
-                        writeFile file: 'ec2_public_ip.txt', text: ec2PublicIp
-                    }
-                }
-            }
-        }
-
-        stage('Configure EC2 Instance') {
-            steps {
-                script {
-                    sshagent (credentials: ['ec2-ssh-credentials']) {
-                        configureInstance(readFile('ec2_public_ip.txt').trim())
-                    }
-                }
-            }
-        }
-
-        stage('Run Docker Container') {
-            steps {
-                script {
-                    sshagent (credentials: ['ec2-ssh-credentials']) {
-                        runDockerContainer(readFile('ec2_public_ip.txt').trim())
-                    }
+                    def securityGroupId = createSecurityGroup()
+                    def instanceId = launchEC2Instance(securityGroupId)
+                    def ec2PublicIp = getInstancePublicIp(instanceId)
+                    setupEC2Instance(ec2PublicIp)
+                    runDockerContainer(ec2PublicIp)
                 }
             }
         }
@@ -71,87 +46,88 @@ pipeline {
 
     post {
         always {
-            cleanWs()
+            cleanWs() // Clean workspace after execution
         }
     }
 }
 
-// Function to log in to Docker
-def dockerLogin() {
+// Helper functions
+def buildAndPushDockerImage() {
     withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
         sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin"
+        sh "docker build -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
+        sh "docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
     }
 }
 
-// Function to build and push Docker image
-def buildAndPushDockerImage() {
-    sh "docker build -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
-    sh "docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-}
-
-// Function to setup security group
-def setupSecurityGroup() {
-    def securityGroupId = sh(script: "aws ec2 describe-security-groups --group-names ${env.SECURITY_GROUP_NAME} --query 'SecurityGroups[0].GroupId' --output text || true", returnStdout: true).trim()
-
-    if (!securityGroupId) {
-        securityGroupId = sh(script: """
-            aws ec2 create-security-group --group-name ${env.SECURITY_GROUP_NAME} --description 'Security group for EC2 instance' --query 'GroupId' --output text
+def createSecurityGroup() {
+    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
+        def securityGroupId = sh(script: """
+            aws ec2 create-security-group --group-name my-security-group --description 'Security group for EC2 instance' --query 'GroupId' --output text --region ${AWS_REGION}
         """, returnStdout: true).trim()
-        echo "Created Security Group ID: ${securityGroupId}"
 
-        // Add ingress rules
+        echo "Security Group ID: ${securityGroupId}"
+
+        // Allow SSH and HTTP access
         sh """
-            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 22 --cidr 0.0.0.0/0
-            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 80 --cidr 0.0.0.0/0
+            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 22 --cidr 0.0.0.0/0 --region ${AWS_REGION}
+            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 80 --cidr 0.0.0.0/0 --region ${AWS_REGION}
         """
-    } else {
-        echo "Security Group already exists: ${securityGroupId}"
-    }
-
-    return securityGroupId
-}
-
-// Function to launch EC2 instance
-def launchInstance(securityGroupId) {
-    def instanceId = sh(script: """
-        aws ec2 run-instances \
-            --image-id ${env.AMI_ID} \
-            --instance-type ${env.INSTANCE_TYPE} \
-            --key-name ${env.KEY_NAME} \
-            --security-group-ids ${securityGroupId} \
-            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=${env.INSTANCE_NAME}}]' \
-            --query 'Instances[0].InstanceId' \
-            --output text
-    """, returnStdout: true).trim()
-
-    echo "Created Instance ID: ${instanceId}"
-    return instanceId
-}
-
-// Function to wait for EC2 instance to be running
-def waitForInstance(instanceId) {
-    retry(3) {
-        sh "aws ec2 wait instance-running --instance-ids ${instanceId} --region ${env.AWS_REGION}"
+        return securityGroupId
     }
 }
 
-// Function to get public IP of EC2 instance
-def getPublicIp(instanceId) {
-    def ec2PublicIp = sh(script: """
-        aws ec2 describe-instances \
-            --instance-ids ${instanceId} \
-            --query 'Reservations[0].Instances[0].PublicIpAddress' \
-            --output text
-    """, returnStdout: true).trim()
+def launchEC2Instance(String securityGroupId) {
+    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
+        def instanceId = sh(script: """
+            aws ec2 run-instances \
+                --image-id ${AMI_ID} \
+                --instance-type ${INSTANCE_TYPE} \
+                --key-name ${KEY_NAME} \
+                --region ${AWS_REGION} \
+                --security-group-ids ${securityGroupId} \
+                --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}}]' \
+                --query 'Instances[0].InstanceId' \
+                --output text
+        """, returnStdout: true).trim()
 
-    echo "Public IP: ${ec2PublicIp}"
-    return ec2PublicIp
+        echo "Instance ID: ${instanceId}"
+        waitForInstanceToBeRunning(instanceId)
+        return instanceId
+    }
 }
 
-// Function to configure EC2 instance
-def configureInstance(ec2PublicIp) {
-    sh """
-    ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
+def waitForInstanceToBeRunning(String instanceId) {
+    retry(5) {
+        sleep 20
+        def instanceState = sh(script: """
+            aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].State.Name' --output text --region ${AWS_REGION}
+        """, returnStdout: true).trim()
+
+        echo "Instance state: ${instanceState}"
+
+        if (instanceState != "running") {
+            error("Instance not ready yet, waiting...")
+        }
+    }
+}
+
+def getInstancePublicIp(String instanceId) {
+    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_CREDENTIALS_ID]]) {
+        def ec2PublicIp = sh(script: """
+            aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].PublicIpAddress' --output text --region ${AWS_REGION}
+        """, returnStdout: true).trim()
+
+        echo "Public IP: ${ec2PublicIp}"
+        writeFile file: 'ec2_public_ip.txt', text: ec2PublicIp
+        return ec2PublicIp
+    }
+}
+
+def setupEC2Instance(String ec2PublicIp) {
+    sshagent (credentials: ['ec2-ssh-credentials']) {
+        sh """
+        ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} <<EOF
         sudo apt-get update
         sudo apt-get install -y docker.io postgresql postgresql-contrib
         sudo systemctl start docker
@@ -160,28 +136,31 @@ def configureInstance(ec2PublicIp) {
         sudo systemctl start postgresql
         sudo systemctl enable postgresql
 
-        # Configure PostgreSQL
-        sudo -i -u postgres psql -c "CREATE USER ${env.POSTGRES_USER} WITH PASSWORD '${env.POSTGRES_PASSWORD}';"
-        sudo -i -u postgres psql -c "CREATE DATABASE ${env.POSTGRES_DB};"
-        sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${env.POSTGRES_DB} TO ${env.POSTGRES_USER};"
+        # PostgreSQL setup
+        sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}';"
+        sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};"
+        sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"
 
+        # Allow remote connections
         echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/13/main/postgresql.conf
-        echo "host    all             all             0.0.0.0/0               md5" | sudo tee -a /etc/postgresql/13/main/pg_hba.conf
+        echo "host all all 0.0.0.0/0 md5" | sudo tee -a /etc/postgresql/13/main/pg_hba.conf
         sudo systemctl restart postgresql
-    EOF
-    """
+        EOF
+        """
+    }
 }
 
-// Function to run the Docker container
-def runDockerContainer(ec2PublicIp) {
-    sh """
-    ssh -o StrictHostKeyChecking=no ec2-user@${ec2PublicIp} <<EOF
+def runDockerContainer(String ec2PublicIp) {
+    sshagent (credentials: ['ec2-ssh-credentials']) {
+        sh """
+        ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} <<EOF
         docker run -d --name my-app-container \
-            -e POSTGRES_USER=${env.POSTGRES_USER} \
-            -e POSTGRES_PASSWORD=${env.POSTGRES_PASSWORD} \
-            -e POSTGRES_DB=${env.POSTGRES_DB} \
+            -e POSTGRES_USER=${POSTGRES_USER} \
+            -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
+            -e POSTGRES_DB=${POSTGRES_DB} \
             -p 80:80 \
-            ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}
-    EOF
-    """
+            ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+        EOF
+        """
+    }
 }
