@@ -8,7 +8,7 @@ pipeline {
         AWS_CREDENTIALS_ID = 'aws-credentials'
         AWS_REGION = 'us-east-1a'
         INSTANCE_TYPE = 't2.micro'
-        AMI_ID = 'ami-0866a3c8686eaeeba'
+        AMI_ID = 'ami-0e86e20dae9224db8'
         KEY_NAME = 'terraform'
         POSTGRES_USER = 'postgres'
         POSTGRES_PASSWORD = 'password'
