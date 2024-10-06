@@ -140,10 +140,10 @@ def setupEC2Instance(String ec2PublicIp) {
 
         // Create PostgreSQL user and database
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "SELECT 1 FROM pg_roles WHERE rolname = \\'${POSTGRES_USER}\\'" || sudo -i -u postgres psql -c "CREATE USER \\'${POSTGRES_USER}\\' WITH PASSWORD \\'${POSTGRES_PASSWORD}\\';"'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "SELECT 1 FROM pg_roles WHERE rolname = \\'${POSTGRES_USER}\\'" || sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD \\'${POSTGRES_PASSWORD}\\';"'
         """
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "SELECT 1 FROM pg_database WHERE datname = \\'${POSTGRES_DB}\\'" || sudo -i -u postgres psql -c "CREATE DATABASE \\'${POSTGRES_DB}\\';"'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "SELECT 1 FROM pg_database WHERE datname = \\'${POSTGRES_DB}\\'" || sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};"'
         """
         sh """
             ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"'
