@@ -160,9 +160,11 @@ def setupEC2Instance(String ec2PublicIp) {
 
         echo "PostgreSQL version: ${pgVersion}" // Debugging line
 
+        // Corrected line to update listen_addresses in postgresql.conf
         sh """
             ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /etc/postgresql/${pgVersion}/main/postgresql.conf'
         """
+
         sh """
             ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'echo "host all all 0.0.0.0/0 md5" | sudo tee -a /etc/postgresql/${pgVersion}/main/pg_hba.conf'
         """
