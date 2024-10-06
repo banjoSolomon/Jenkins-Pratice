@@ -129,38 +129,26 @@ def getInstancePublicIp(String instanceId) {
 
 def setupEC2Instance(String ec2PublicIp) {
     sshagent (credentials: ['ec2-ssh-credentials']) {
-        sh """
-        ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} << EOF
-        # Update package list and install required packages
-        sudo apt-get update
-        sudo apt-get install -y docker.io postgresql postgresql-contrib
+        // Send individual commands for setup
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo apt-get update'"
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo apt-get install -y docker.io postgresql postgresql-contrib'"
 
-        # Start and enable Docker
-        sudo systemctl start docker
-        sudo systemctl enable docker
+        // Start and enable Docker and PostgreSQL
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo systemctl start docker && sudo systemctl enable docker'"
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo systemctl start postgresql && sudo systemctl enable postgresql'"
 
-        # Start and enable PostgreSQL
-        sudo systemctl start postgresql
-        sudo systemctl enable postgresql
+        // Create PostgreSQL user and database
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c \"SELECT 1 FROM pg_roles WHERE rolname = \\'${POSTGRES_USER}\\'\" || sudo -i -u postgres psql -c \"CREATE USER ${POSTGRES_USER} WITH PASSWORD \\'${POSTGRES_PASSWORD}\\';\"'"
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c \"SELECT 1 FROM pg_database WHERE datname = \\'${POSTGRES_DB}\\'\" || sudo -i -u postgres psql -c \"CREATE DATABASE ${POSTGRES_DB};\"'"
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c \"GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};\"'"
 
-        # Create PostgreSQL user if it does not exist
-        sudo -i -u postgres psql -c "SELECT 1 FROM pg_roles WHERE rolname = '${POSTGRES_USER}'" | grep -q 1 || sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}';"
+        // Configure PostgreSQL for remote access
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'PG_VERSION=\$(psql -V | awk \\'{print \$3}\\' | cut -d \\'\\' -f 1)'"
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo sed -i \"s/#listen_addresses = \\'localhost\\'/listen_addresses = \\'*\\'/\" /etc/postgresql/\${PG_VERSION}/main/postgresql.conf'"
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'echo \"host all all 0.0.0.0/0 md5\" | sudo tee -a /etc/postgresql/\${PG_VERSION}/main/pg_hba.conf'"
 
-        # Create database if it does not exist
-        sudo -i -u postgres psql -c "SELECT 1 FROM pg_database WHERE datname = '${POSTGRES_DB}'" | grep -q 1 || sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};"
-
-        # Grant privileges
-        sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"
-
-        # Configure PostgreSQL for remote access
-        PG_VERSION=\$(psql -V | awk '{print \$3}' | cut -d '.' -f 1)
-        sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /etc/postgresql/\${PG_VERSION}/main/postgresql.conf
-        echo "host all all 0.0.0.0/0 md5" | sudo tee -a /etc/postgresql/\${PG_VERSION}/main/pg_hba.conf
-
-        # Restart PostgreSQL to apply changes
-        sudo systemctl restart postgresql
-        EOF
-        """
+        // Restart PostgreSQL to apply changes
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo systemctl restart postgresql'"
     }
 }
 
@@ -173,10 +161,6 @@ def waitForPostgreSQL(String ec2PublicIp) {
 
 def runDockerContainer(String ec2PublicIp) {
     sshagent (credentials: ['ec2-ssh-credentials']) {
-        sh """
-        ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} << EOF
-        sudo docker run -d -p 8080:8080 --name my-jenkins ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
-        EOF
-        """
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo docker run -d -p 8080:8080 --name my-jenkins ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}'"
     }
 }
