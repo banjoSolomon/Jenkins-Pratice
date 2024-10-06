@@ -140,10 +140,10 @@ def setupEC2Instance(String ec2PublicIp) {
 
         // Create PostgreSQL user and database
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "SELECT 1 FROM pg_roles WHERE rolname = \\'${POSTGRES_USER}\\'" || sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD \\'${POSTGRES_PASSWORD}\\';"'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "SELECT 1 FROM pg_roles WHERE rolname = \\"${POSTGRES_USER}\\" || sudo -i -u postgres psql -c \\"CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}';\\""'
         """
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "SELECT 1 FROM pg_database WHERE datname = \\'${POSTGRES_DB}\\'" || sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};"'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "SELECT 1 FROM pg_database WHERE datname = \\"${POSTGRES_DB}\\" || sudo -i -u postgres psql -c \\"CREATE DATABASE ${POSTGRES_DB};\\""'
         """
         sh """
             ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"'
@@ -151,11 +151,11 @@ def setupEC2Instance(String ec2PublicIp) {
 
         // Configure PostgreSQL for remote access
         def pgVersion = sh(script: """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'psql -V | awk \\'{print \$3}\\' | cut -d \\'\\' -f 1'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'psql -V | awk '{print \$3}' | cut -d ' ' -f 1'
         """, returnStdout: true).trim()
 
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo sed -i "s/#listen_addresses = \\'localhost\\'/listen_addresses = \\'*\\'/g" /etc/postgresql/${pgVersion}/main/postgresql.conf'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /etc/postgresql/${pgVersion}/main/postgresql.conf'
         """
         sh """
             ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'echo "host all all 0.0.0.0/0 md5" | sudo tee -a /etc/postgresql/${pgVersion}/main/pg_hba.conf'
