@@ -53,6 +53,7 @@ pipeline {
 }
 
 // Helper functions
+
 def buildAndPushDockerImage() {
     withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
         sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin"
@@ -129,7 +130,7 @@ def getInstancePublicIp(String instanceId) {
 
 def setupEC2Instance(String ec2PublicIp) {
     sshagent (credentials: ['ec2-ssh-credentials']) {
-        // Send individual commands for setup
+        // Update and install necessary packages
         sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo apt-get update'"
         sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo apt-get install -y docker.io postgresql postgresql-contrib'"
 
@@ -139,30 +140,30 @@ def setupEC2Instance(String ec2PublicIp) {
 
         // Create PostgreSQL user and database
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "SELECT 1 FROM pg_roles WHERE rolname = '${POSTGRES_USER}'" || sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}";'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "SELECT 1 FROM pg_roles WHERE rolname = '${POSTGRES_USER}'" || sudo -i -u postgres psql -c "CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}';"'
         """
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "SELECT 1 FROM pg_database WHERE datname = '${POSTGRES_DB}'" || sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};";'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "SELECT 1 FROM pg_database WHERE datname = '${POSTGRES_DB}'" || sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};"'
         """
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};";'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"'
         """
 
         // Configure PostgreSQL for remote access
+        def pgVersion = sh(script: """
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'psql -V | awk \\'{print \$3}\\' | cut -d \\'\\' -f 1'
+        """, returnStdout: true).trim()
+
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'PG_VERSION=\$(psql -V | awk \\'{print \$3}\\' | cut -d \\'\\' -f 1)'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo sed -i "s/#listen_addresses = \\'localhost\\'/listen_addresses = \\'*\\'/g" /etc/postgresql/${pgVersion}/main/postgresql.conf'
         """
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo sed -i "s/#listen_addresses = \\'localhost\\'/listen_addresses = \\'*\\'/g" /etc/postgresql/\${PG_VERSION}/main/postgresql.conf'
-        """
-        sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'echo "host all all 0.0.0.0/0 md5" | sudo tee -a /etc/postgresql/\${PG_VERSION}/main/pg_hba.conf'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'echo "host all all 0.0.0.0/0 md5" | sudo tee -a /etc/postgresql/${pgVersion}/main/pg_hba.conf'
         """
 
         // Restart PostgreSQL to apply changes
         sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo systemctl restart postgresql'"
     }
-
 }
 
 def waitForPostgreSQL(String ec2PublicIp) {
