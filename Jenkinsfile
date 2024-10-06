@@ -155,7 +155,7 @@ def setupEC2Instance(String ec2PublicIp) {
 
         // Configure PostgreSQL for remote access
         def pgVersion = sh(script: """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'psql -V | awk '{print \$3}' | cut -d ' ' -f 1'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'psql -V | awk '{print \$3}' | cut -d '.' -f 1'
         """, returnStdout: true).trim()
 
         sh """
