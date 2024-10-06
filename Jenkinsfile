@@ -14,6 +14,7 @@ pipeline {
         POSTGRES_PASSWORD = 'password'
         POSTGRES_DB = 'Jenkins_db'
         INSTANCE_NAME = 'Jenkins'
+        DOCKER_NETWORK = 'jenkins_network'
     }
 
     stages {
@@ -37,9 +38,7 @@ pipeline {
                     def securityGroupId = createSecurityGroup()
                     def instanceId = launchEC2Instance(securityGroupId)
                     def ec2PublicIp = getInstancePublicIp(instanceId)
-                    setupEC2Instance(ec2PublicIp)
-                    waitForPostgreSQL(ec2PublicIp)
-                    runDockerContainer(ec2PublicIp)
+                    setupDockerEnvironment(ec2PublicIp)
                 }
             }
         }
@@ -128,62 +127,33 @@ def getInstancePublicIp(String instanceId) {
     }
 }
 
-def setupEC2Instance(String ec2PublicIp) {
+def setupDockerEnvironment(String ec2PublicIp) {
     sshagent (credentials: ['ec2-ssh-credentials']) {
-        // Update and install necessary packages
-        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo apt-get update'"
-        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo apt-get install -y docker.io postgresql postgresql-contrib'"
+        // Install Docker if not already installed
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo apt-get update && sudo apt-get install -y docker.io'"
 
-        // Start and enable Docker and PostgreSQL
-        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo systemctl start docker && sudo systemctl enable docker'"
-        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo systemctl start postgresql && sudo systemctl enable postgresql'"
+        // Create Docker network
+        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo docker network create ${DOCKER_NETWORK}'"
 
-        // Create PostgreSQL user
+        // Run PostgreSQL container
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "CREATE ROLE ${POSTGRES_USER} WITH LOGIN PASSWORD '${POSTGRES_PASSWORD}';" || echo "User already exists"'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo docker run -d \
+                --name postgres-container \
+                --network ${DOCKER_NETWORK} \
+                -e POSTGRES_USER=${POSTGRES_USER} \
+                -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
+                -e POSTGRES_DB=${POSTGRES_DB} \
+                -p 5432:5432 \
+                postgres'
         """
 
-        // Create PostgreSQL database
+        // Run Jenkins container connected to the same network
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};" || echo "Database already exists"'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo docker run -d \
+                --name jenkins-container \
+                --network ${DOCKER_NETWORK} \
+                -p 8080:8080 \
+                ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}'
         """
-
-        // Grant privileges to the user on the database
-        sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${POSTGRES_DB} TO ${POSTGRES_USER};"'
-        """
-
-        // Configure PostgreSQL for remote access
-        def pgVersion = sh(script: """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'psql -V | awk "{print \$3}" | cut -d "." -f 1'
-        """, returnStdout: true).trim()
-
-        echo "PostgreSQL version: ${pgVersion}" // Debugging line
-
-        // Corrected line to update listen_addresses in postgresql.conf
-        sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /etc/postgresql/${pgVersion}/main/postgresql.conf'
-        """
-
-        sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'echo "host all all 0.0.0.0/0 md5" | sudo tee -a /etc/postgresql/${pgVersion}/main/pg_hba.conf'
-        """
-
-        // Restart PostgreSQL to apply changes
-        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo systemctl restart postgresql'"
-    }
-}
-
-
-def waitForPostgreSQL(String ec2PublicIp) {
-    retry(5) {
-        sleep 20
-        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'"
-    }
-}
-
-def runDockerContainer(String ec2PublicIp) {
-    sshagent (credentials: ['ec2-ssh-credentials']) {
-        sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo docker run -d -p 8080:8080 --name my-jenkins ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}'"
     }
 }
