@@ -169,6 +169,7 @@ def setupEC2Instance(String ec2PublicIp) {
     }
 }
 
+
 def waitForPostgreSQL(String ec2PublicIp) {
     retry(5) {
         sleep 20
