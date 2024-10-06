@@ -162,6 +162,7 @@ def setupEC2Instance(String ec2PublicIp) {
         // Restart PostgreSQL to apply changes
         sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo systemctl restart postgresql'"
     }
+
 }
 
 def waitForPostgreSQL(String ec2PublicIp) {
