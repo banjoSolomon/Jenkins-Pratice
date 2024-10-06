@@ -158,6 +158,8 @@ def setupEC2Instance(String ec2PublicIp) {
             ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'psql -V | awk "{print \$3}" | cut -d "." -f 1'
         """, returnStdout: true).trim()
 
+        echo "PostgreSQL version: ${pgVersion}" // Debugging line
+
         sh """
             ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /etc/postgresql/${pgVersion}/main/postgresql.conf'
         """
@@ -169,7 +171,6 @@ def setupEC2Instance(String ec2PublicIp) {
         sh "ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo systemctl restart postgresql'"
     }
 }
-
 
 def waitForPostgreSQL(String ec2PublicIp) {
     retry(5) {
