@@ -140,12 +140,12 @@ def setupEC2Instance(String ec2PublicIp) {
 
         // Create PostgreSQL user
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "DO \${\$} BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${POSTGRES_USER}') THEN CREATE ROLE ${POSTGRES_USER} WITH LOGIN PASSWORD '${POSTGRES_PASSWORD}'; END IF; END \${\$};"'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "CREATE ROLE ${POSTGRES_USER} WITH LOGIN PASSWORD '${POSTGRES_PASSWORD}';" || echo "User already exists"'
         """
 
         // Create PostgreSQL database
         sh """
-            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "DO \${\$} BEGIN IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${POSTGRES_DB}') THEN CREATE DATABASE ${POSTGRES_DB}; END IF; END \${\$};"'
+            ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo -i -u postgres psql -c "CREATE DATABASE ${POSTGRES_DB};" || echo "Database already exists"'
         """
 
         // Grant privileges to the user on the database
