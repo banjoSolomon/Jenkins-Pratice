@@ -4,8 +4,7 @@ FROM maven:3.8.7 AS build
 # Set the working directory inside the container
 WORKDIR /app
 
-# If needed, copy Maven settings for proxy configuration
- COPY settings.xml /root/.m2/settings.xml
+
 
 # Copy the source code to the working directory
 COPY . .
