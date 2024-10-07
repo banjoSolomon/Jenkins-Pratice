@@ -12,6 +12,7 @@ RUN apt-get update && \
 # Create a non-root user
 RUN useradd -m appuser
 
+
 # Set the working directory and make it writable
 WORKDIR /app
 RUN chown appuser:appuser /app
