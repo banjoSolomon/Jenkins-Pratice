@@ -1,4 +1,5 @@
-FROM openjdk:17
+# Use a Debian-based OpenJDK image
+FROM openjdk:17-jdk-slim
 
 # Set non-interactive mode for apt
 ENV DEBIAN_FRONTEND=noninteractive
