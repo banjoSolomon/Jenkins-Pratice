@@ -8,7 +8,7 @@ pipeline {
         AWS_CREDENTIALS_ID = 'aws-credentials'
         AWS_REGION = 'us-east-1'
         INSTANCE_TYPE = 't2.micro'
-        AMI_ID = 'ami-0866a3c8686eaeeba'
+        AMI_ID = 'ami-0866a3c8686eaeeba' // Make sure this AMI is valid and available in your region
         KEY_NAME = 'terraform'
         POSTGRES_USER = 'postgres'
         POSTGRES_PASSWORD = 'password'
@@ -73,7 +73,8 @@ def createSecurityGroup() {
         // Allow SSH and HTTP access
         sh """
             aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 22 --cidr 0.0.0.0/0 --region ${AWS_REGION}
-            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 80 --cidr 0.0.0.0/0 --region ${AWS_REGION}
+            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 8080 --cidr 0.0.0.0/0 --region ${AWS_REGION} // Allow Jenkins access
+            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 5432 --cidr 0.0.0.0/0 --region ${AWS_REGION} // Allow PostgreSQL access
         """
 
         return securityGroupId
@@ -148,12 +149,17 @@ def setupDockerEnvironment(String ec2PublicIp) {
         """
 
         // Run Jenkins container connected to the same network
+        // Ensure the Jenkins container is configured to connect to the PostgreSQL container
         sh """
             ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo docker run -d \
                 --name jenkins-container \
                 --network ${DOCKER_NETWORK} \
+                -e DB_HOST=postgres-container \
+                -e DB_USER=${POSTGRES_USER} \
+                -e DB_PASSWORD=${POSTGRES_PASSWORD} \
                 -p 8080:8080 \
-                ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}'
+                ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} \
+                -Djenkins.install.runSetupWizard=false'
         """
     }
 }
