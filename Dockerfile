@@ -11,10 +11,13 @@ RUN apt-get update && \
 
 # Create a non-root user
 RUN useradd -m appuser
-USER appuser
 
-# Set the working directory
+# Set the working directory and make it writable
 WORKDIR /app
+RUN chown appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
 
 # Download the latest jenkins.war
 RUN curl -fsSL https://get.jenkins.io/war-stable/latest/jenkins.war -o jenkins.war
