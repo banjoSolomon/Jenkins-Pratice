@@ -7,6 +7,7 @@ WORKDIR /app
 # Copy the source code to the working directory
 COPY . .
 
+# Build the application, skipping tests
 RUN mvn -B clean package -DskipTests
 
 # Second stage: Create a lightweight runtime image
