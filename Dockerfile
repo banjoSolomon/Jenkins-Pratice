@@ -1,17 +1,20 @@
-FROM openjdk:17-jdk-slim
+# Use a lightweight base image (Alpine) for OpenJDK 17
+FROM openjdk:17-alpine
 
 # Set non-interactive mode for apt
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Install only the required packages using Alpine's package manager
+RUN apk add --no-cache curl git
+
+# Create a non-root user
+RUN adduser -D appuser
+
 # Set the working directory
 WORKDIR /app
 
-# Install required packages, create a non-root user, and download Jenkins WAR
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl git && \
-    rm -rf /var/lib/apt/lists/* && \
-    useradd -m appuser && \
-    curl -fsSL https://get.jenkins.io/war-stable/latest/jenkins.war -o jenkins.war && \
+# Download the latest jenkins.war as root
+RUN curl -fsSL https://get.jenkins.io/war-stable/latest/jenkins.war -o jenkins.war && \
     chown appuser:appuser jenkins.war
 
 # Switch to non-root user
