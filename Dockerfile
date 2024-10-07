@@ -1,4 +1,4 @@
-FROM openjdk:17-jdk
+FROM openjdk:17
 
 # Set non-interactive mode for apt
 ENV DEBIAN_FRONTEND=noninteractive
