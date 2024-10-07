@@ -12,16 +12,14 @@ RUN apt-get update && \
 # Create a non-root user
 RUN useradd -m appuser
 
-
-# Set the working directory and make it writable
+# Set the working directory
 WORKDIR /app
-RUN chown appuser:appuser /app
+
+# Download the latest jenkins.war as root
+RUN curl -fsSL https://get.jenkins.io/war-stable/latest/jenkins.war -o jenkins.war
 
 # Switch to non-root user
 USER appuser
-
-# Download the latest jenkins.war
-RUN curl -fsSL https://get.jenkins.io/war-stable/latest/jenkins.war -o jenkins.war
 
 # Set entry point for the container
 ENTRYPOINT ["java", "-jar", "-Djenkins.install.runSetupWizard=false", "jenkins.war"]
