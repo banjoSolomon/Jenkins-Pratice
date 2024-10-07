@@ -1,14 +1,26 @@
-# Use the official OpenJDK image as the base image
-FROM openjdk:11-jre-slim
+# First stage: Build the application
+FROM maven:3.8.7 AS build
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy the JAR file from the host to the container
-COPY target/Jenkins.jar app.jar
+# Copy the source code to the working directory
+COPY Jenkins-Pratice/ .
 
-# Expose the port the app runs on
-EXPOSE 8080
+# Build the application, skipping tests
+RUN mvn -B clean package -DskipTests
+
+# Second stage: Create a lightweight runtime image
+FROM openjdk:17
+
+# Set the working directory for the runtime stage
+WORKDIR /app
+
+# Copy the built JAR file from the 'build' stage to the runtime image
+COPY --from=build /app/target/*.jar Jenkins-Pratice.jar
+
+# Expose the port your application will run on
+EXPOSE 9090
 
 # Command to run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-jar", "-Dserver.port=9090", "Jenkins-Pratice.jar"]
