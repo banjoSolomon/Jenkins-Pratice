@@ -16,7 +16,7 @@ USER appuser
 WORKDIR /app
 
 # Download the latest jenkins.war
-RUN curl -v -fsSL https://get.jenkins.io/war-stable/latest/jenkins.war -o jenkins.war
+RUN curl -fsSL https://get.jenkins.io/war-stable/latest/jenkins.war -o jenkins.war
 
 # Set entry point for the container
 ENTRYPOINT ["java", "-jar", "-Djenkins.install.runSetupWizard=false", "jenkins.war"]
