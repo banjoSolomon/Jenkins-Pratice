@@ -1,4 +1,4 @@
-FROM openjdk:17-jdk-slim
+FROM openjdk:17-jdk
 
 # Set non-interactive mode for apt
 ENV DEBIAN_FRONTEND=noninteractive
@@ -15,8 +15,8 @@ USER appuser
 # Set the working directory
 WORKDIR /app
 
-# Download the latest jenkins.war (you can specify a version if desired)
-RUN curl -fsSL https://get.jenkins.io/war-stable/latest/jenkins.war -o jenkins.war
+# Download the latest jenkins.war
+RUN curl -v -fsSL https://get.jenkins.io/war-stable/latest/jenkins.war -o jenkins.war
 
 # Set entry point for the container
 ENTRYPOINT ["java", "-jar", "-Djenkins.install.runSetupWizard=false", "jenkins.war"]
