@@ -3,7 +3,10 @@ FROM openjdk:17-jdk-slim
 # Set non-interactive mode for apt
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install required packages and create a non-root user
+# Set the working directory
+WORKDIR /app
+
+# Install required packages, create a non-root user, and download Jenkins WAR
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl git && \
     rm -rf /var/lib/apt/lists/* && \
@@ -13,9 +16,6 @@ RUN apt-get update && \
 
 # Switch to non-root user
 USER appuser
-
-# Set the working directory
-WORKDIR /app
 
 # Set entry point for the container
 ENTRYPOINT ["java", "-jar", "-Djenkins.install.runSetupWizard=false", "jenkins.war"]
