@@ -5,7 +5,7 @@ FROM maven:3.8.7 AS build
 WORKDIR /app
 
 # Copy the source code to the working directory
-COPY Jenkins-Pratice/ .
+COPY . .
 
 # Build the application, skipping tests
 RUN mvn -B clean package -DskipTests
