@@ -1,9 +1,6 @@
-# Stage 1: Build the application with OpenJDK 17 and Maven
-FROM openjdk:17 AS build
+# Stage 1: Build the application with Maven
+FROM maven:3.8.7-openjdk-17 AS build
 WORKDIR /app
-
-# Install Maven
-RUN apt-get update && apt-get install -y maven
 
 # Copy only necessary files to build the application
 COPY pom.xml .
