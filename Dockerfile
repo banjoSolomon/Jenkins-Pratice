@@ -14,7 +14,8 @@ RUN mvn dependency:go-offline
 # Build the application while skipping tests
 RUN mvn -B clean package -DskipTests
 
-FROM openjdk:17
+# Use OpenJDK slim for final image
+FROM openjdk:17-slim
 
 # Set the working directory for the final image
 WORKDIR /app
