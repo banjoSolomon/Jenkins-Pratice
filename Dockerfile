@@ -9,6 +9,9 @@ COPY src/ ./src
 # Build the application, skipping tests
 RUN mvn -B clean package -DskipTests
 
+# List the target directory to check the jar file
+RUN ls -al /app/target
+
 # Stage 2: Create the runtime image with OpenJDK 17
 FROM openjdk:17-jdk-slim
 WORKDIR /app
