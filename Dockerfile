@@ -1,6 +1,6 @@
-FROM maven:3.8.7 as build
+FROM maven:3.9.0 as build
 COPY . .
-RUN mvn -B clean package -DskipTests -X
+RUN mvn clean package -DskipTests -X
 
 FROM openjdk:17
 COPY --from=build target/*.jar jenkins.jar
