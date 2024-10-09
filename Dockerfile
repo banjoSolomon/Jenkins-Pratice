@@ -17,12 +17,15 @@ USER appuser
 COPY --chown=appuser:appuser . /app
 WORKDIR /app
 
+# Make the mvnw script executable
+RUN chmod +x mvnw
+
 # Package your application with Maven
 # This assumes you have a pom.xml in the current directory
 RUN ./mvnw clean package -DskipTests
 
 # Set the entry point for your application
-ENTRYPOINT ["java", "-jar", "target/jenkis"]
+ENTRYPOINT ["java", "-jar", "-Dserver.port=8080", "Jenkins-Pratice.jar"]
 
 # Expose the application's default port
 EXPOSE 8080
