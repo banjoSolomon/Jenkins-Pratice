@@ -1,11 +1,10 @@
-
-FROM maven:3.9.5-openjdk-17 AS builder
+FROM maven:3.9.4-openjdk-17 AS builder
 
 # Set the working directory
 WORKDIR /app
 
 # Copy the pom.xml and any other necessary files first
-COPY pom.xml .
+COPY pom.xml ./
 COPY src ./src
 
 # Build the application (this will create the jar in the target directory)
