@@ -73,8 +73,8 @@ def createSecurityGroup() {
         // Allow SSH and HTTP access
         sh """
             aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 22 --cidr 0.0.0.0/0 --region ${AWS_REGION}
-            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 8080 --cidr 0.0.0.0/0 --region ${AWS_REGION} // Allow Jenkins access
-            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 5432 --cidr 0.0.0.0/0 --region ${AWS_REGION} // Allow PostgreSQL access
+            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 8080 --cidr 0.0.0.0/0 --region ${AWS_REGION}  # Allow Jenkins access
+            aws ec2 authorize-security-group-ingress --group-id ${securityGroupId} --protocol tcp --port 5432 --cidr 0.0.0.0/0 --region ${AWS_REGION}  # Allow PostgreSQL access
         """
 
         return securityGroupId
