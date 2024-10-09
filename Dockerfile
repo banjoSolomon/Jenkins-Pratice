@@ -1,7 +1,9 @@
 # Use a Maven image to build the application
 FROM maven:3.8.7 AS build
+
+
 COPY . .
-RUN mvn -B clean package -DskipTests -e
+RUN mvn -B clean package -DskipTests -X
 
 # Use a Java image to run the application
 FROM openjdk:17
