@@ -17,6 +17,9 @@ USER appuser
 COPY --chown=appuser:appuser . /app
 WORKDIR /app
 
+# Copy the Maven settings file if needed
+COPY settings.xml /home/appuser/.m2/settings.xml
+
 # Make the mvnw script executable
 RUN chmod +x mvnw
 
@@ -25,7 +28,7 @@ RUN chmod +x mvnw
 RUN ./mvnw clean package -DskipTests
 
 # Set the entry point for your application
-ENTRYPOINT ["java", "-jar", "-Dserver.port=8080", "Jenkins-Pratice.jar"]
+ENTRYPOINT ["java", "-jar", "-Dserver.port=8080", "target/Jenkins-Pratice.jar"]
 
 # Expose the application's default port
 EXPOSE 8080
