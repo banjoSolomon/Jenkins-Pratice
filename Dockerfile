@@ -12,8 +12,6 @@ RUN mvn -B clean package -DskipTests -X
 
 # Use OpenJDK to run the application
 FROM openjdk:17
-
-# Set the working directory for the runtime environment
 WORKDIR /app
 
 # Copy the built JAR file from the build stage
