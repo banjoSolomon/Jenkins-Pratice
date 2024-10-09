@@ -1,28 +1,20 @@
-# Use a slimmer base image for Java
-FROM openjdk:17-jdk-slim
+# Use Maven to build the application
+FROM maven:3.8.7 AS build
 
-# Set environment variables (optional)
-ENV DEBIAN_FRONTEND=noninteractive
+# Copy the project files into the container
+COPY . .
 
-# Install required packages and clean up in a single RUN command
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl git && \
-    rm -rf /var/lib/apt/lists/*
+# Build the application without running tests
+RUN mvn -B clean package -DskipTests
 
-# Create a non-root user and switch to that user for security
-RUN useradd -m appuser
-USER appuser
+# Use OpenJDK to run the application
+FROM openjdk:17
 
-# Copy your application files
-COPY --chown=appuser:appuser . /app
-WORKDIR /app
+# Copy the built JAR file from the build stage
+COPY --from=build target/*.jar jenkins.jar
 
-# Package your application with Maven
-# This assumes you have a pom.xml in the current directory
-RUN ./mvnw clean package -DskipTests
+# Set the active Spring profile (if needed, otherwise you can comment this out)
+# ENV SPRING_PROFILES_ACTIVE=${PROFILE}
 
-# Set the entry point for your application
-ENTRYPOINT ["java", "-jar", "target/Jenkins.jar"]
-
-# Expose the application's default port
-EXPOSE 8080
+# Set the command to run the application
+ENTRYPOINT ["java", "-Dserver.port=8080", "-jar", "jenkins.jar"]
