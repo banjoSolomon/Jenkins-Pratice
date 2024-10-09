@@ -1,26 +1,28 @@
-FROM maven:3.8.7-openjdk-17 AS build
-
-# Set the working directory
-WORKDIR /app
-
-# Copy the pom.xml and any other necessary files first
-COPY pom.xml ./
-COPY src ./src
-
-# Build the application (this will create the jar in the target directory)
-RUN mvn clean package -DskipTests
-
-# Second stage: Create a smaller image for running the application
+# Use a slimmer base image for Java
 FROM openjdk:17-jdk-slim
 
-# Set the working directory
+# Set environment variables (optional)
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install required packages and clean up in a single RUN command
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl git && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user and switch to that user for security
+RUN useradd -m appuser
+USER appuser
+
+# Copy your application files
+COPY --chown=appuser:appuser . /app
 WORKDIR /app
 
-# Copy the built jar from the builder stage
-COPY --from=build /app/target/*.jar app.jar
+# Package your application with Maven
+# This assumes you have a pom.xml in the current directory
+RUN ./mvnw clean package -DskipTests
 
-# Expose the default port
+# Set the entry point for your application
+ENTRYPOINT ["java", "-jar", "target/Jenkins.jar"]
+
+# Expose the application's default port
 EXPOSE 8080
-
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar", "-Djenkins.install.runSetupWizard=false"]
