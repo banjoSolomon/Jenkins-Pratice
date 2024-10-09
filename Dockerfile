@@ -1,27 +1,28 @@
-# First stage: Build the application using Maven
-FROM maven:3.8.7 AS build
+# Use the official Jenkins LTS image from Docker Hub
+FROM jenkins/jenkins:lts
 
-# Set the working directory inside the container
-WORKDIR /app
+# Skip the Jenkins setup wizard
+ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false"
 
-# Copy the project files into the working directory
-COPY pom.xml .
-COPY src ./src
+# Install Maven
+USER root
+RUN apt-get update && \
+    apt-get install -y maven && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* # Clean up to reduce image size
 
-# Build the application, allowing Jenkins to handle test execution if necessary
-RUN mvn -B clean package -DskipTests
+# Switch back to Jenkins user
+USER jenkins
 
-# Second stage: Use a lightweight OpenJDK image for running the app
-FROM openjdk:17-slim
+# Install necessary plugins
+RUN jenkins-plugin-cli --plugins "workflow-aggregator git"
 
-# Set the working directory for the runtime environment
-WORKDIR /app
+# Expose Jenkins web interface port and Jenkins agent port
+EXPOSE 8080
+EXPOSE 50000
 
-# Copy the built JAR file from the build stage to this stage
-COPY --from=build /app/target/*.jar Jenkins.jar
+# Define default Jenkins volume for persistence
+VOLUME /var/jenkins_home
 
-# Expose the application's port
-EXPOSE 9090
-
-# Specify the entry point for the container
-ENTRYPOINT ["java", "-jar", "-Dserver.port=9090", "Jenkins.jar"]
+# Start Jenkins
+CMD ["jenkins"]
