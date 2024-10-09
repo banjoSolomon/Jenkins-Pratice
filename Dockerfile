@@ -1,32 +1,26 @@
-# Stage 1: Build stage with Maven
+# First stage: Build the application using Maven
 FROM maven:3.8.7 AS build
 
-# Set the working directory
+# Set the working directory inside the container
 WORKDIR /app
 
-# Copy only the pom.xml to leverage Docker caching
-COPY pom.xml .
+# Copy the project files into the working directory
+COPY . .
 
-# Download dependencies (cache this layer)
-RUN mvn dependency:go-offline
-
-# Now copy the source code
-COPY src ./src
-
-# Build the application
+# Build the application and skip tests to speed up the process
 RUN mvn -B clean package -DskipTests
 
-# Stage 2: Final slim image
+# Second stage: Run the application with a slim OpenJDK image
 FROM openjdk:17-slim
 
-# Set the working directory
+# Set the working directory for the runtime environment
 WORKDIR /app
 
-# Copy the packaged JAR file from the build stage
+# Copy the built JAR file from the build stage to this stage
 COPY --from=build /app/target/*.jar Jenkins.jar
 
-# Expose the application port
+# Expose the application's port
 EXPOSE 9090
 
-# Set the entry point to run the JAR
+# Specify the entry point for the container
 ENTRYPOINT ["java", "-jar", "-Dserver.port=9090", "Jenkins.jar"]
