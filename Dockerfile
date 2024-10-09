@@ -1,10 +1,14 @@
-FROM maven:3.8.7 as build
+# Use a Maven image to build the application
+FROM maven:3.8.7 AS build
 COPY . .
-RUN mvn -B clean package -DskipTests
+RUN mvn -B clean package -DskipTests -e
 
+# Use a Java image to run the application
 FROM openjdk:17
-COPY --from=build target/*.jar Jenkins.jar
-EXPOSE 9090
+COPY --from=build target/Jenkins-Pratice.jar /app/Jenkins-Pratice.jar
 
-# Removed the problematic backtick
-ENTRYPOINT ["java", "-jar", "-Dserver.port=9090", "Jenkins.jar"]
+# Set the entry point for your application
+ENTRYPOINT ["java", "-jar", "/app/Jenkins-Pratice.jar"]
+
+# Expose the application's default port
+EXPOSE 8080
