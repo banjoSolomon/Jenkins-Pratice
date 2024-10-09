@@ -1,7 +1,7 @@
 FROM maven:3.8.7 as build
 COPY . .
-RUN mvn -B clean package -DskipTests
+RUN mvn -B clean package -DskipTests -X
+
 FROM openjdk:17
 COPY --from=build target/*.jar jenkins.jar
-#ENV SPRING_PROFILES_ACTIVE=$(PROFILE)
-ENTRYPOINT ["java", "-jar", "-Dserver.port=8080", "jenkins.jar"]
+ENTRYPOINT ["java", "-Dserver.port=8080", "-jar", "jenkins.jar"]
