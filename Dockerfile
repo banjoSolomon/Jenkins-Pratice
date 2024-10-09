@@ -1,4 +1,4 @@
-FROM maven:3.8.7-openjdk-17 AS builder
+FROM maven:3.8.7-openjdk-17 AS build
 
 # Set the working directory
 WORKDIR /app
@@ -17,7 +17,7 @@ FROM openjdk:17-jdk-slim
 WORKDIR /app
 
 # Copy the built jar from the builder stage
-COPY --from=builder /app/target/*.jar app.jar
+COPY --from=build /app/target/*.jar app.jar
 
 # Expose the default port
 EXPOSE 8080
