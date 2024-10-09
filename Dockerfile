@@ -1,32 +1,27 @@
-# Use the official Jenkins LTS image from Docker Hub
-FROM jenkins/jenkins:lts
 
-# Skip the Jenkins setup wizard
-ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false"
+FROM maven:3.9.5-openjdk-17 AS builder
 
-# Install specific version of Maven
-USER root
-RUN apt-get update && \
-    apt-get install -y maven && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Set the working directory
+WORKDIR /app
 
-# Switch back to Jenkins user
-USER jenkins
+# Copy the pom.xml and any other necessary files first
+COPY pom.xml .
+COPY src ./src
 
-# Install necessary plugins
-RUN jenkins-plugin-cli --plugins "workflow-aggregator git"
+# Build the application (this will create the jar in the target directory)
+RUN mvn clean package -DskipTests
 
-# Add a health check to monitor Jenkins
-HEALTHCHECK --interval=30s --timeout=30s --retries=3 \
-  CMD curl -f http://localhost:8080/login || exit 1
+# Second stage: Create a smaller image for running the application
+FROM openjdk:17-jdk-slim
 
-# Expose Jenkins web interface port and Jenkins agent port
+# Set the working directory
+WORKDIR /app
+
+# Copy the built jar from the builder stage
+COPY --from=builder /app/target/*.jar app.jar
+
+# Expose the default port
 EXPOSE 8080
-EXPOSE 50000
 
-# Define default Jenkins volume for persistence
-VOLUME /var/jenkins_home
-
-# Start Jenkins
-CMD ["jenkins"]
+# Run the application
+ENTRYPOINT ["java", "-jar", "app.jar", "-Djenkins.install.runSetupWizard=false"]
