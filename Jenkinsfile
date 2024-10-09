@@ -3,12 +3,12 @@ pipeline {
 
     environment {
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
-        DOCKER_IMAGE_NAME = 'solomon11/jenkins'
+        DOCKER_IMAGE_NAME = 'solomon11/content'
         DOCKER_IMAGE_TAG = 'latest'
         AWS_CREDENTIALS_ID = 'aws-credentials'
         AWS_REGION = 'us-east-1'
         INSTANCE_TYPE = 't2.micro'
-        AMI_ID = 'ami-0866a3c8686eaeeba' // Make sure this AMI is valid and available in your region
+        AMI_ID = 'ami-0866a3c8686eaeeba'
         KEY_NAME = 'terraform'
         POSTGRES_USER = 'postgres'
         POSTGRES_PASSWORD = 'password'
