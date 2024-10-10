@@ -128,6 +128,7 @@ def getInstancePublicIp(String instanceId) {
     }
 }
 
+
 def setupDockerEnvironment(String ec2PublicIp) {
     sshagent (credentials: ['ec2-ssh-credentials']) {
         // Install Docker if not already installed
