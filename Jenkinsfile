@@ -148,15 +148,14 @@ def setupDockerEnvironment(String ec2PublicIp) {
                 postgres'
         """
 
-        // Run Jenkins container connected to the same network
-        // Ensure the Jenkins container is configured to connect to the PostgreSQL container
+
         sh """
             ssh -o StrictHostKeyChecking=no ubuntu@${ec2PublicIp} 'sudo docker run -d \
                 --name jenkins-container \
                 --network ${DOCKER_NETWORK} \
-                -e DB_HOST=postgres-container \
-                -e DB_USER=${POSTGRES_USER} \
-                -e DB_PASSWORD=${POSTGRES_PASSWORD} \
+                -e SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-container:5432/${POSTGRES_DB} \
+                -e SPRING_DATASOURCE_USERNAME=${POSTGRES_USER} \
+                -e SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD} \
                 -p 8080:8080 \
                 ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} \
                 -Djenkins.install.runSetupWizard=false'
