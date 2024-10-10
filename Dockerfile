@@ -8,6 +8,7 @@ RUN mvn -B clean package -DskipTests -X
 FROM openjdk:17
 COPY --from=build target/demo-0.0.1-SNAPSHOT.jar /app/Jenkins.jar
 
+
 # Set the entry point for your application
 ENTRYPOINT ["java", "-jar", "/app/Jenkins.jar"]
 
